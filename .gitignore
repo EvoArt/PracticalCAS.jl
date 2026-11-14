@@ -1,0 +1,8 @@
+Manifest.toml
+/docs/build/
+*.jl.cov
+*.jl.mem
+/examples/*.html
+/examples/*.pdf
+/examples/*_files/
+/examples/.quarto/
