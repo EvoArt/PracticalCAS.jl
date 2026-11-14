@@ -104,7 +104,22 @@ function stability(m::DynModel, point::AbstractDict)
     J = jacobian(m, point)
     vals = _safe(_eigvals, J)
     vals === nothing && (vals = Term[])
-    cond = _iscont(m) ? routh_hurwitz(J) : jury(J)
+    # with all eigenvalues known and real, "each one < 0" (or inside (-1, 1)) is
+    # exact and reads better than the Routh–Hurwitz / Jury conditions
+    if length(vals) == size(J, 1) && all(v -> (sign_of(v) & CPX) == 0, vals)
+        cs = Any[]
+        for λ in _dedupe(vals)
+            if _iscont(m)
+                push!(cs, simplify(Rel(:<, λ, ZERO)))
+            else
+                push!(cs, simplify(Rel(:<, λ, ONE)))
+                push!(cs, simplify(Rel(:>, λ, MONE)))
+            end
+        end
+        cond = _and(cs)
+    else
+        cond = _iscont(m) ? routh_hurwitz(J) : jury(J)
+    end
     v = decide_verdict(cond)
     pd = Dict{Sym,Term}(k => toterm(x) for (k, x) in point)
     return Stability(pd, J, vals, cond, v, _iscont(m))

@@ -122,7 +122,7 @@ function simplify(x::Term)::Term
     x isa Union{Num,Const,Sym} && return x
     y = _simp_inner(x)
     cands = Term[y]
-    for f in (cancel, factor, expand, _trigsimp)
+    for f in (cancel, factor, expand, _trigsimp, _gencollect)
         z = _safe(f, y)
         z !== nothing && push!(cands, z)
     end
@@ -205,6 +205,37 @@ function _absknown(f::Term)
     (s & (NEG | CPX)) == 0 && return f
     (s & (POS | CPX)) == 0 && return _mul((MONE, f))
     return _abs(f)
+end
+
+# a single fraction whose numerator and denominator are collected by their
+# transcendental parts (exp(…), R^t, …) with factored coefficients:
+# K*n₀/(n₀ + (K - n₀)*exp(-r*t)) rather than K*n₀/(n₀ + K*exp(-r*t) - n₀*exp(-r*t))
+function _gencollect(x::Term)::Term
+    c = cancel(x)
+    return _quot(_collect_tr(numerator(c)), _collect_tr(denominator(c)))
+end
+_istrans(b, e) = b isa Fn || b isa Const || !(e isa Num)
+function _collect_tr(p::Term)::Term
+    p isa Add || return p
+    groups = Dict{Term,Vector{Term}}()
+    order = Term[]
+    for t in _summands(p)
+        mono, coef = Term[], Term[]
+        if t isa Mul
+            push!(coef, Num(t.c))
+            for (b, e) in t.factors
+                push!(_istrans(b, e) ? mono : coef, _powraw(b => e))
+            end
+        else
+            b, e = _base_exp(t)
+            push!(_istrans(b, e) ? mono : coef, t)
+        end
+        m = _mul(mono)
+        haskey(groups, m) || push!(order, m)
+        push!(get!(groups, m, Term[]), _mul(coef))
+    end
+    length(order) == length(_summands(p)) && return p
+    return _add(Term[_mul((factor(_add(groups[m])), m)) for m in order])
 end
 
 # sin² + cos² = 1: rewrite cos² as 1 - sin² and see whether it gets smaller
@@ -326,4 +357,16 @@ function simplify(c::And)
     parts = Any[simplify(a) for a in c.args]
     return _and(parts)
 end
-simplify(c::Or) = _or(Any[simplify(a) for a in c.args])
+function simplify(c::Or)
+    parts = Any[simplify(a) for a in c.args]
+    # a < b ∨ a == b is a ≤ b
+    for i in eachindex(parts), j in eachindex(parts)
+        p, q = parts[i], parts[j]
+        (p isa Rel && q isa Rel && q.op === :(==) && p.op in (:<, :>)) || continue
+        if (p.lhs == q.lhs && p.rhs == q.rhs) || (p.lhs == q.rhs && p.rhs == q.lhs)
+            parts[i] = Rel(p.op === :< ? :<= : :>=, p.lhs, p.rhs)
+            parts[j] = false
+        end
+    end
+    return _or(parts)
+end

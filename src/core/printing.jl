@@ -294,10 +294,11 @@ function _lx(x::Mul)
         isone(numerator(ac)) || push!(num, string(numerator(ac)))
         isone(denominator(ac)) || push!(den, string(denominator(ac)))
     end
+    nden = count(f -> f.second isa Num && f.second.val < 0, x.factors) + length(den)
     for (b, e) in x.factors
         if e isa Num && e.val < 0
             s, p = _lpow(b, Num(-e.val))
-            push!(den, isempty(den) && length(x.factors) == 1 ? s : _lparen(s, p, P_MUL))
+            push!(den, nden == 1 ? s : _lparen(s, p, P_MUL))
         else
             s, p = _lpow(b, e)
             push!(num, _lparen(s, p, P_MUL))
