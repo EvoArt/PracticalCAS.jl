@@ -1,7 +1,7 @@
 # Partial fractions.
 
 # long division of polynomials given by coefficient vectors (constant first)
-function _polydivrem(n::Vector{Term}, d::Vector{Term})
+function _polydivrem(n, d)
     dn = length(d) - 1
     n = vcat(n, _tzeros(max(0, dn - length(n))))
     q = _tzeros(max(length(n) - dn, 1))
@@ -17,7 +17,7 @@ function _polydivrem(n::Vector{Term}, d::Vector{Term})
     return q, r
 end
 
-_frompoly(cs::Vector{Term}, x::Sym) = _add(Term[_mul((c, _pow(x, Num(k - 1)))) for (k, c) in enumerate(cs)])
+_frompoly(cs, x::Sym) = _add(Term[_mul((c, _pow(x, Num(k - 1)))) for (k, c) in enumerate(cs)])
 
 """
     apart(f, x)

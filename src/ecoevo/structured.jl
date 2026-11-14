@@ -97,7 +97,7 @@ eigenvalues.
 """
 reproduction_number(F::AbstractMatrix, V::AbstractMatrix) = _r0(next_generation(F, V))
 reproduction_number(inf::AbstractVector, trans::AbstractVector, xs::AbstractVector, dfe::AbstractDict) = _r0(next_generation(inf, trans, xs, dfe))
-function _r0(K::Matrix{Term})
+function _r0(K)
     size(K, 1) == 1 && return K[1, 1]
     rank(K) == 1 && return tr(K)
     vals = filter(v -> !iszero(v), _eigvals(K))

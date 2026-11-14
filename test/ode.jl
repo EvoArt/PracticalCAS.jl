@@ -24,16 +24,16 @@ D2(f, v) = diff(f(v), v, 2)
     end
 
     @testset "higher order and boundary values" begin
-        @funs u y
+        @funs u w
         @syms p::(0, 1) Ns::positive
         # backward equation for fixation: u'' + 2 Ns u' = 0, u(0) = 0, u(1) = 1
         s = dsolve(D2(u, p) + 2Ns * diff(u(p), p) ~ 0, u(p); bc = [u(0) => 0, u(1) => 1])
         @test isequiv(s, (1 - exp(-2Ns * p)) / (1 - exp(-2Ns)))
         # harmonic oscillator: y'' + y = 0
-        s = dsolve(D2(y, t) + y(t) ~ 0, y(t); ic = (0, [1, 0]))
+        s = dsolve(D2(w, t) + w(t) ~ 0, w(t); ic = (0, [1, 0]))
         @test isequiv(s, cos(t))
         # with constant forcing
-        s = dsolve(D2(y, t) - y(t) ~ 2, y(t))
+        s = dsolve(D2(w, t) - w(t) ~ 2, w(t))
         @test isequiv(diff(s, t, 2) - s, 2)
     end
 

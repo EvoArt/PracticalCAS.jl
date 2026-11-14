@@ -38,7 +38,7 @@
     @testset "stability criteria" begin
         @syms T D
         rh = routh_hurwitz([1, -T, D])
-        @test rh isa Condition
+        @test rh isa Cond
         @test decide(subs(rh, T => -1, D => 2)) === true
         @test decide(subs(rh, T => 1, D => 2)) === false
         J = [-r 0; 0 -K]

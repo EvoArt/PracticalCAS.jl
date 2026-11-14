@@ -219,8 +219,12 @@ function _imul(a::Ival, b::Ival)
         closed = (xc && yc) || (iszero(x) && xc) || (iszero(y) && yc)
         push!(cands, (v, closed && !_isinfx(v)))
     end
-    lo = minimum(first, cands)
-    hi = maximum(first, cands)
+    # by hand: min/max of a Rational{BigInt} and a Float64 would promote to BigFloat
+    lo, hi = cands[1][1], cands[1][1]
+    for (v, _) in cands
+        v < lo && (lo = v)
+        v > hi && (hi = v)
+    end
     lc = any(c -> c[1] == lo && c[2], cands)
     hc = any(c -> c[1] == hi && c[2], cands)
     return Ival(lo, lc, hi, hc)

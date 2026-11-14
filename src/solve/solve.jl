@@ -33,7 +33,7 @@ function solve(f::Term, x::Sym)
     return _dedupe([simplify(s) for s in sols])
 end
 
-function _dedupe(xs::Vector{Term})
+function _dedupe(xs)
     out = Term[]
     for x in xs
         any(y -> isequiv(x, y), out) || push!(out, x)
@@ -197,12 +197,12 @@ end
 
 has_any(x::Term, vars) = any(v -> has(x, v), vars)
 
-function _iszero_at_all(d::Term, s::Dict{Sym,Term})
+function _iszero_at_all(d::Term, s)
     v = _safe(y -> cancel(subs(y, s)), d)
     return v === nothing || iszero(v)
 end
 
-function _close(s::Dict{Sym,Term})
+function _close(s)
     t = copy(s)
     for _ in 1:length(t)+1
         changed = false
@@ -218,12 +218,12 @@ function _close(s::Dict{Sym,Term})
     return Dict{Sym,Term}(k => simplify(v) for (k, v) in t)
 end
 
-function _samesol(a::Dict{Sym,Term}, b::Dict{Sym,Term})
+function _samesol(a, b)
     keys(a) == keys(b) || return false
     return all(k -> isequiv(a[k], b[k]), keys(a))
 end
 
-function _solve_rec!(out, eqs::Vector{Term}, xs::Vector{Sym}, sol::Dict{Sym,Term})
+function _solve_rec!(out, eqs, xs, sol)
     live = Term[]
     for e in eqs
         e = numerator(cancel(e))
@@ -260,7 +260,7 @@ function _solve_rec!(out, eqs::Vector{Term}, xs::Vector{Sym}, sol::Dict{Sym,Term
 end
 
 # prefer a variable the factor is linear in, then the lowest degree
-function _pick_var(g::Term, vs::Vector{Sym})
+function _pick_var(g::Term, vs)
     best, bestscore = vs[1], (typemax(Int), typemax(Int))
     for v in vs
         d = degree(g, v)

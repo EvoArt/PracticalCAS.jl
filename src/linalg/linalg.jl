@@ -290,7 +290,7 @@ end
 
 # ---- stability criteria -----------------------------------------------------------
 
-function _hurwitz_det(b::Vector{Term}, k::Int)
+function _hurwitz_det(b, k::Int)
     # b[1] = b0 (leading), b[i+1] = b_i; H[i,j] = b_{2j-i}
     n = length(b) - 1
     get_b(m) = (0 <= m <= n) ? b[m+1] : ZERO
@@ -300,7 +300,7 @@ end
 
 # conditions (as terms that must be > 0) for b0 zⁿ + b1 zⁿ⁻¹ + … + bn to have
 # all roots in the open left half-plane, given b0 > 0 (Liénard–Chipart)
-function _lienard_chipart(b::Vector{Term})
+function _lienard_chipart(b)
     n = length(b) - 1
     conds = Term[b[i+1] for i in 1:n]
     k = n - 1
@@ -311,7 +311,7 @@ function _lienard_chipart(b::Vector{Term})
     return conds
 end
 
-function _conds(xs::Vector{Term})
+function _conds(xs)
     out = Any[]
     for x in xs
         c = simplify(Rel(:>, simplify(x), ZERO))

@@ -60,7 +60,7 @@ Infinity, for limits and integration bounds (`-∞` for minus infinity).
 const ∞ = INF
 
 # core
-export Term, Num, Sym, Fn, Eqn, Condition, Rel, And, Or, UFun, RootOf
+export Term, Num, Sym, Fn, Eqn, Cond, Rel, And, Or, UFun, RootOf
 export @syms, @funs, sym, toterm, ∞
 export subs, free_symbols, has, complexity, evalf, lambdify, latex
 export gradient, jacobian, hessian, reim

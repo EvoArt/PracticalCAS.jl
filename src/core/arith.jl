@@ -57,8 +57,8 @@ end
 _base_exp(x::Pow) = (x.base, x.exp)
 _base_exp(x::Term) = (x, ONE)
 
-_powraw(p::Pair{Term,Term}) = p.second == ONE ? p.first : Pow(p.first, p.second)
-_from_factors(f::Vector{Pair{Term,Term}})::Term = length(f) == 1 ? _powraw(f[1]) : Mul(Q(1), f)
+_powraw(p) = p.second == ONE ? p.first : Pow(p.first, p.second)
+_from_factors(f)::Term = length(f) == 1 ? _powraw(f[1]) : Mul(Q(1), f)
 
 # k * t, where t has coefficient 1 and is not a number
 function _scale(t::Term, k::NumVal)::Term
@@ -99,7 +99,7 @@ end
 
 # ---- products ----------------------------------------------------------------------
 
-function _addexp!(d::Dict{Term,Term}, b::Term, e::Term)
+function _addexp!(d, b::Term, e::Term)
     d[b] = haskey(d, b) ? _add((d[b], e)) : e
     return d
 end
@@ -164,7 +164,7 @@ function _mul(xs)::Term
     return _mul(vcat(Term[res], extra))
 end
 
-function _build_mul(c::NumVal, facs::Vector{Pair{Term,Term}})::Term
+function _build_mul(c::NumVal, facs)::Term
     isempty(facs) && return Num(c)
     if length(facs) == 1
         b, e = facs[1]
@@ -327,6 +327,15 @@ Base.:^(a::Term, b::Rational) = _pow(a, Num(b))
 Base.:^(a::Term, b::Number) = _pow(a, toterm(b))
 Base.:^(a::Number, b::Term) = _pow(toterm(a), b)
 Base.:^(a::Irrational{:ℯ}, b::Term) = _exp(b)
+
+# muladd(x, y, z) on numbers promotes its arguments, which cannot work for terms
+# (each converts to itself); generic matrix code calls it
+for (X, Y, Z) in ((:Term, :Term, :Term), (:Term, :Term, :Number), (:Term, :Number, :Term),
+                  (:Number, :Term, :Term), (:Term, :Number, :Number), (:Number, :Term, :Number),
+                  (:Number, :Number, :Term))
+    @eval Base.muladd(x::$X, y::$Y, z::$Z) = x * y + z
+end
+Base.muladd(x::T, y::T, z::T) where {T<:Term} = x * y + z
 
 Base.Float64(x::Term) = Float64(real(evalf(x)))
 Base.Rational(x::Num) = x.val isa Q ? x.val : Rational(x.val)

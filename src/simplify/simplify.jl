@@ -95,14 +95,14 @@ end
 decide(b::Bool) = b
 function decide(c::And)
     vals = [decide(a) for a in c.args]
-    any(===(false), vals) && return false
-    all(===(true), vals) && return true
+    any(v -> v === false, vals) && return false
+    all(v -> v === true, vals) && return true
     return nothing
 end
 function decide(c::Or)
     vals = [decide(a) for a in c.args]
-    any(===(true), vals) && return true
-    all(===(false), vals) && return false
+    any(v -> v === true, vals) && return true
+    all(v -> v === false, vals) && return false
     return nothing
 end
 

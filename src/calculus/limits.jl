@@ -56,7 +56,7 @@ function _lv(g::Term, t::Sym)::Tuple{Symbol,Term}
     return (:unk, ZERO)
 end
 
-function _sgn_of_class(c::Tuple{Symbol,Term})
+function _sgn_of_class(c)
     k = c[1]
     k in (:zp, :pinf) && return 1
     k in (:zn, :minf) && return -1

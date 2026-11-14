@@ -76,6 +76,11 @@ function _dfn(f::Fn, x::Sym)::Term
         any(a -> a == x, f.args) || return ZERO
         return Deriv(f, [x => 1])
     end
+    if h === :Integral
+        # d/dx ∫ f dx = f (an indefinite integral in x); other cases are not supported
+        length(f.args) == 2 && f.args[2] == x && return f.args[1]
+        throw(ArgumentError("diff: cannot differentiate the unevaluated integral $f"))
+    end
     u = f.args[1]
     du = _d(u, x)
     du == ZERO && return ZERO

@@ -214,7 +214,7 @@ function latex(A::AbstractMatrix)
 end
 latex(v::AbstractVector) = "\\begin{pmatrix}" * join((latex(y) for y in v), " \\\\ ") * "\\end{pmatrix}"
 
-for T in (Term, Eqn, Condition)
+for T in (Term, Eqn, Cond)
     @eval Base.show(io::IO, ::MIME"text/latex", x::$T) = print(io, "\$", latex(x), "\$")
 end
 
@@ -272,7 +272,7 @@ function _lpow(b::Term, e::Term)
     return (_lparen(bs, bp, P_ATOM) * "^{" * latex(e) * "}", P_POW)
 end
 _lx(x::Pow) = _lpow(x.base, x.exp)
-function _ljoin(parts::Vector{String})
+function _ljoin(parts)
     io = IOBuffer()
     for (i, p) in enumerate(parts)
         if i > 1

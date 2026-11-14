@@ -66,7 +66,7 @@ function _supports(n::Int)
 end
 
 # the equaliser on support S: (A x)_i equal for i ∈ S, Σ x = 1
-function _equaliser(A::Matrix{Term}, S::Vector{Int})
+function _equaliser(A, S)
     n = size(A, 1)
     k = length(S)
     if k == 1
@@ -92,7 +92,7 @@ function _equaliser(A::Matrix{Term}, S::Vector{Int})
     return x
 end
 
-function _candidate(G::MatrixGame, S::Vector{Int}, strict::Bool)
+function _candidate(G::MatrixGame, S, strict::Bool)
     A = G.A
     n = size(A, 1)
     x = _equaliser(A, S)

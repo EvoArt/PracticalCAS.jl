@@ -2,9 +2,10 @@
 #
 # A heuristic integrator, in the order: linearity and constant factors; a table
 # of elementary antiderivatives with linear inner arguments; rational functions
-# by partial fractions (logs and arctangents); substitution where the integrand
-# is f(u(x)) u'(x) up to a constant; integration by parts for polynomial times
-# exp/sin/cos/log/inverse trig, and exp times sin/cos; finally expanding the
+# by partial fractions (logs and arctangents); integration by parts for
+# polynomial times exp/sin/cos/log/inverse trig, and exp times sin/cos;
+# substitution where the integrand is f(u(x)) u'(x) up to a constant; finally
+# expanding the
 # integrand and trying again. A full Risch integrator is on the roadmap.
 
 """
@@ -81,9 +82,9 @@ function _int(f::Term, x::Sym, depth::Int)
     F !== nothing && return F
     F = _int_rational(f, x, depth)
     F !== nothing && return F
-    F = _int_subst(f, x, depth)
-    F !== nothing && return F
     F = _int_parts(f, x, depth)
+    F !== nothing && return F
+    F = _int_subst(f, x, depth)
     F !== nothing && return F
     g = _safe(expand, f)
     if g !== nothing && g != f && g isa Add
@@ -285,7 +286,7 @@ function _int_parts(f::Term, x::Sym, depth::Int)
         Pk = P
         sgn = 1
         for k in 0:n
-            G = _int_table(G, x)
+            G = _int(G, x, depth + 1)
             G === nothing && return nothing
             push!(out, sgn * Pk * G)
             Pk = diff(Pk, x)

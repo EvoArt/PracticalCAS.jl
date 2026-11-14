@@ -68,7 +68,7 @@ function _expandpow(b::Term, e::Term)::Term
     end
     return _pow(b, expand(e))
 end
-function _mulsums(as::Vector{Term}, bs::Vector{Term})
+function _mulsums(as, bs)
     out = Term[]
     for a in as, b in bs
         push!(out, _mul((a, b)))

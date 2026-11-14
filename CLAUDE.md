@@ -67,6 +67,13 @@ so it prints `2*(1 + x)`).
   symbols are facts (`assume!`, `assuming(V < C) do … end`).
 - **Numbers**: exact `Rational{BigInt}` or `Float64`. Never let a Rational meet a
   Float64 directly (it promotes to BigFloat): use `_nadd`/`_nmul`.
+- **Type annotations only where they earn their place**: for dispatch, for
+  extending Base on our own types (`Base.:+(a::Term, b::Number)`, avoiding
+  piracy), and return annotations like `_mul(xs)::Term` (so inference gives
+  `Term` and generic code such as `A * B` makes a `Matrix{Term}`). Do not annotate
+  arguments of internal helpers otherwise, and never with concrete container
+  types: `Pair{Term,Term}` rejects a `Pair{Sym,Num}` (parametric types are
+  invariant); that caused most failures of the first test run.
 - **Typed containers**: `fill(ZERO, n)` is a `Vector{Num}`; use `_tzeros(n)` or
   `Term[...]` when entries will become other terms.
 - **Exports avoid common model symbols**: numeric evaluation is `evalf` (not

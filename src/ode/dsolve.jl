@@ -136,7 +136,7 @@ function dsolve(eq::Eqn, yf::Fn; ic = nothing, bc = nothing)
 end
 
 # G(Y0, …, Yn) = 0 with Yk = d^k y/dt^k; returns (solution, constants)
-function _dsolve_n(G::Term, Ys::Vector{Sym}, t::Sym)
+function _dsolve_n(G::Term, Ys, t::Sym)
     n = length(Ys) - 1
     if n == 1
         r = solve(G, Ys[2])
@@ -175,7 +175,7 @@ function _dsolve_n(G::Term, Ys::Vector{Sym}, t::Sym)
 end
 
 # y⁽ⁿ⁾ + aₙ₋₁ y⁽ⁿ⁻¹⁾ + … + a₀ y = g(t), constant aₖ
-function _const_coeff(a::Vector{Term}, g::Term, t::Sym)
+function _const_coeff(a, g::Term, t::Sym)
     n = length(a) - 1
     r = Sym(gensym(:r), SymInfo(false, false, nothing, false, nothing, false))
     p = _add(Term[_mul((a[k+1], _pow(r, Num(k)))) for k in 0:n])
@@ -220,7 +220,7 @@ function _const_coeff(a::Vector{Term}, g::Term, t::Sym)
 end
 
 # undetermined coefficients for a polynomial forcing g(t)
-function _particular(a::Vector{Term}, g::Term, t::Sym, roots)
+function _particular(a, g::Term, t::Sym, roots)
     cs = polycoeffs(g, t)
     cs === nothing && return nothing
     m = count(iszero, a[1:end-1]) == 0 ? 0 : findfirst(!iszero, a) - 1   # multiplicity of root 0

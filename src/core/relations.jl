@@ -19,25 +19,25 @@ rhs(e::Eqn) = e.rhs
 subs(e::Eqn, args...) = Eqn(subs(e.lhs, args...), subs(e.rhs, args...))
 
 """
-    Condition
+    Cond
 
 A relation between terms ([`Rel`](@ref)) or a combination of conditions with `&`
 (`And`), `|` (`Or`) and `!`. Comparing terms with `<`, `<=`, `>`, `>=` builds a
 `Rel`; [`decide`](@ref) and [`simplify`](@ref) evaluate it under the
 assumptions.
 """
-abstract type Condition end
+abstract type Cond end
 
-struct Rel <: Condition
+struct Rel <: Cond
     op::Symbol
     lhs::Term
     rhs::Term
 end
-struct And <: Condition
-    args::Vector{Condition}
+struct And <: Cond
+    args::Vector{Cond}
 end
-struct Or <: Condition
-    args::Vector{Condition}
+struct Or <: Cond
+    args::Vector{Cond}
 end
 
 Base.:(==)(a::Rel, b::Rel) = a.op === b.op && a.lhs == b.lhs && a.rhs == b.rhs
@@ -47,7 +47,7 @@ Base.:(==)(a::Or, b::Or) = Set(a.args) == Set(b.args)
 Base.hash(a::And, h::UInt) = hash(Set(a.args), hash(:and, h))
 Base.hash(a::Or, h::UInt) = hash(Set(a.args), hash(:or, h))
 
-const CondLike = Union{Bool,Condition}
+const CondLike = Union{Bool,Cond}
 
 function _rel(op::Symbol, a::Term, b::Term)
     if a isa Num && b isa Num
@@ -77,11 +77,11 @@ const _NEGOP = Dict(:< => :>=, :<= => :>, :> => :<=, :>= => :<, :(==) => :!=, :!
 const _FLIPOP = Dict(:< => :>, :<= => :>=, :> => :<, :>= => :<=, :(==) => :(==), :!= => :!=)
 
 Base.:!(a::Rel) = Rel(_NEGOP[a.op], a.lhs, a.rhs)
-Base.:!(a::And) = _or(Condition[!c for c in a.args])
-Base.:!(a::Or) = _and(Condition[!c for c in a.args])
+Base.:!(a::And) = _or(Cond[!c for c in a.args])
+Base.:!(a::Or) = _and(Cond[!c for c in a.args])
 
 function _and(xs)
-    out = Condition[]
+    out = Cond[]
     for x in xs
         x === true && continue
         x === false && return false
@@ -97,7 +97,7 @@ function _and(xs)
     return And(out)
 end
 function _or(xs)
-    out = Condition[]
+    out = Cond[]
     for x in xs
         x === false && continue
         x === true && return true
@@ -113,10 +113,10 @@ function _or(xs)
     return Or(out)
 end
 
-Base.:&(a::Condition, b::CondLike) = _and((a, b))
-Base.:&(a::Bool, b::Condition) = _and((a, b))
-Base.:|(a::Condition, b::CondLike) = _or((a, b))
-Base.:|(a::Bool, b::Condition) = _or((a, b))
+Base.:&(a::Cond, b::CondLike) = _and((a, b))
+Base.:&(a::Bool, b::Cond) = _and((a, b))
+Base.:|(a::Cond, b::CondLike) = _or((a, b))
+Base.:|(a::Bool, b::Cond) = _or((a, b))
 
 subs(c::Rel, args...) = _rel(c.op, subs(c.lhs, args...), subs(c.rhs, args...))
 subs(c::And, args...) = _and([subs(a, args...) for a in c.args])

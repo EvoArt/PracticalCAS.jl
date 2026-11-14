@@ -57,7 +57,7 @@ function _exp(x::Term)::Term
     return Fn(:exp, Term[x])
 end
 
-function _from_factors_except(f::Vector{Pair{Term,Term}}, i::Int)::Term
+function _from_factors_except(f, i::Int)::Term
     g = Pair{Term,Term}[f[j] for j in eachindex(f) if j != i]
     isempty(g) && return ONE
     return _from_factors(g)
@@ -194,7 +194,7 @@ _summands(x::Add) = Term[(iszero(x.c) ? Term[] : Term[Num(x.c)]); [_scale(t, k) 
 _summands(x::Term) = Term[x]
 
 # rebuild a function application through its smart constructor
-function _fncall(h::Symbol, args::Vector{Term})::Term
+function _fncall(h::Symbol, args)::Term
     length(args) == 1 || return Fn(h, args)
     x = args[1]
     h === :exp && return _exp(x)

@@ -32,7 +32,7 @@ subs(x::Term, ps::Pair...) = subs(x, Dict{Term,Term}(toterm(p.first) => toterm(p
 subs(x::Term, d::AbstractDict) = _subs(x, d isa Dict{Term,Term} ? d : Dict{Term,Term}(toterm(k) => toterm(v) for (k, v) in d))
 subs(x::Number, args...) = x
 subs(x::AbstractArray, args...) = map(y -> subs(y, args...), x)
-function _subs(x::Term, d::Dict{Term,Term})::Term
+function _subs(x::Term, d)::Term
     haskey(d, x) && return d[x]
     x isa Union{Num,Const,Sym} && return x
     return _map(y -> _subs(y, d), x)
@@ -77,7 +77,7 @@ has(::Number, ::Term) = false
 has(x::AbstractArray, y::Term) = any(z -> has(z, y), x)
 
 # subterms satisfying a predicate, collected once each
-function _collect_sub!(out::Vector{Term}, pred, x::Term)
+function _collect_sub!(out, pred, x::Term)
     pred(x) && !(x in out) && push!(out, x)
     x isa Add && foreach(p -> _collect_sub!(out, pred, p.first), x.terms)
     x isa Mul && foreach(p -> (_collect_sub!(out, pred, p.first); _collect_sub!(out, pred, p.second)), x.factors)

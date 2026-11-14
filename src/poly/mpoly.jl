@@ -26,7 +26,7 @@ nterms(p::MP) = length(p.t)
 isconst(p::MP) = all(e -> all(iszero, e), keys(p.t))
 constval(p::MP) = iszero(p) ? Q(0) : p.t[zeros(Int, p.nv)]
 
-function _addto!(d::Dict{Vector{Int},Q}, e::Vector{Int}, c::Q)
+function _addto!(d, e, c::Q)
     v = get(d, e, Q(0)) + c
     if iszero(v)
         delete!(d, e)
