@@ -1,0 +1,109 @@
+---
+title: "Perturbation techniques and separation of time scales"
+subtitle: "Otto & Day, appendix on perturbation techniques, with PracticalCAS"
+engine: julia
+---
+
+When a parameter is small (weak selection, rare mutation, weak coupling),
+quantities that have no simple closed form can be expanded in powers of it.
+When some variables change much faster than others, the fast ones can be set
+to their quasi-equilibrium.
+
+```{julia}
+using PracticalCAS
+@syms x ε
+```
+
+## Roots of an equation as a series
+
+At `ε = 0` the roots are 0 and 2; `perturb` corrects each order by order.
+
+```{julia}
+rts = perturb(x^2 - (2 + ε) * x + ε, x, ε; order = 3)
+```
+
+```{julia}
+#| include: false
+exact = solve(x^2 - (2 + ε) * x + ε, x)
+for r in rts
+    @assert any(abs(evalf(subs(r - e, ε => 0.01))) < 1e-7 for e in exact)
+end
+```
+
+## Equilibrium allele frequency under mutation–selection balance
+
+A deleterious allele with selection coefficient `s` arises by mutation at
+rate `μ`. In the haploid model the equilibrium solves a quadratic; to first
+order in the small mutation rate it is `μ/s`:
+
+```{julia}
+@syms q::(0, 1) s::(0, 1) μ::positive
+nextq = (1 - μ) * (1 - s) * q / (1 - s * q) + μ * (1 - q)
+perturb(numerator(cancel(nextq - q)), q, μ; order = 2)
+```
+
+```{julia}
+#| include: false
+pr = perturb(numerator(cancel(nextq - q)), q, μ; order = 2)
+@assert any(r -> isequiv(taylor(r, μ, 0, 1), μ / s), pr)
+```
+
+## Eigenvalues of a weakly coupled system
+
+Two populations each regulated at rate 1 and 2, exchanging migrants at a
+small rate `ε`: the eigenvalues move away from -1 and -2 at second order.
+
+```{julia}
+@syms λ
+J = [-1 ε; ε -2]
+perturb(charpoly(J, λ), λ, ε; order = 2)
+```
+
+```{julia}
+#| include: false
+ev = perturb(charpoly(J, λ), λ, ε; order = 2)
+@assert any(isequiv(e, -1 + ε^2) for e in ev) && any(isequiv(e, -2 - ε^2) for e in ev)
+```
+
+## Separation of time scales: enzyme kinetics
+
+The enzyme–substrate complex `C` forms and dissociates fast compared with the
+consumption of substrate `S`. Setting `dC/dt = 0` gives the Michaelis–Menten
+rate for the substrate:
+
+```{julia}
+@syms S::nonneg C::nonneg k₁::positive k₋::positive k₂::positive E₀::positive
+mm = ode(S => -k₁ * S * (E₀ - C) + k₋ * C, C => k₁ * S * (E₀ - C) - (k₋ + k₂) * C)
+reduced = only(quasi_steady_state(mm, C))
+```
+
+```{julia}
+#| include: false
+Km = (k₋ + k₂) / k₁
+@assert isequiv(reduced.rhs[1], -k₂ * E₀ * S / (Km + S))
+```
+
+## A fast resource
+
+Consumers `N` feed on a resource `R` that is supplied at rate `a`, decays at
+rate `b` and is consumed at rate `c R N`; the resource turns over much faster
+than the consumers reproduce. At the resource's quasi-equilibrium
+`R = a/(b + c N)` the consumers follow a single equation with a saturating
+growth rate, and settle where `c R = m`:
+
+```{julia}
+@syms R::nonneg N::positive a::positive b::positive c::positive m::positive
+chemo = ode(R => a - b * R - c * R * N, N => N * (c * R - m))
+slow = only(quasi_steady_state(chemo, R))
+```
+
+```{julia}
+equilibria(slow)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(slow.rhs[1], N * (c * a / (b + c * N) - m))
+@assert any(e -> isequiv(e[N], (c * a - b * m) / (c * m)), equilibria(slow))
+```
+

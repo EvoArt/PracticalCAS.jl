@@ -1,0 +1,155 @@
+---
+title: "Models with periodic behaviour"
+subtitle: "Otto & Day, chapter 11, with PracticalCAS"
+engine: julia
+---
+
+Cycles are the next step beyond equilibria. In discrete time a `k`-cycle is a
+fixed point of the `k`-fold map; it is stable when the product of the
+derivatives around the cycle has modulus below one. In continuous time cycles
+are born at Hopf bifurcations, where a pair of eigenvalues crosses the
+imaginary axis, and closed orbits can be shown from a constant of motion.
+
+```{julia}
+using PracticalCAS
+```
+
+## The 2-cycle of the logistic map
+
+```{julia}
+@syms n r::positive
+lm = recurrence(n => r * n * (1 - n))
+c2 = only(cycles(lm, 2))
+```
+
+The cycle exists (is real) for `r > 3`, when the equilibrium `1 - 1/r` loses
+stability, and is stable for `3 < r < 1 + √6`, after which it gives way to a
+4-cycle:
+
+```{julia}
+stability(lm, Dict(n => 1 - 1 / r)).condition
+```
+
+```{julia}
+#| include: false
+@assert isequiv(c2.multiplier[1, 1], 4 + 2r - r^2)
+@assert decide(subs(c2.condition, r => 3.2)) === true
+@assert decide(subs(c2.condition, r => 3.5)) === false
+@assert isequiv(subs(c2.points[1][n] + c2.points[2][n], r => 4), 5 // 4)   # (r + 1)/r
+@assert decide(subs(stability(lm, Dict(n => 1 - 1 / r)).condition, r => 2.5)) === true
+@assert decide(subs(stability(lm, Dict(n => 1 - 1 / r)).condition, r => 3.2)) === false
+```
+
+Numerically, at `r = 3.2` the map settles on the two points of the cycle:
+
+```{julia}
+u = simulate(lm, 0.3, 500; parameters = Dict(r => 3.2)).u[end-1:end, 1]
+```
+
+```{julia}
+#| include: false
+pts = sort([evalf(subs(p[n], r => 3.2)) for p in c2.points])
+@assert all(abs.(sort(u) .- pts) .< 1e-8)
+```
+
+## Predator–prey: a constant of motion
+
+The Lotka–Volterra model has a neutral centre (chapter 8). Its trajectories
+satisfy a separable equation `dP/dN = …`, which integrates to a conserved
+quantity: every orbit is a closed curve `H = constant`.
+
+```{julia}
+@syms N::positive P::positive b::positive c::positive d::positive ρ::positive
+lv = ode(N => ρ * N - b * N * P, P => c * b * N * P - d * P)
+H = conserved_quantity(lv)
+```
+
+```{julia}
+isconserved(H, lv)
+```
+
+```{julia}
+#| include: false
+@assert isconserved(H, lv)
+sol = simulate(lv, [1.0, 0.5], 30; parameters = Dict(ρ => 1, b => 1, c => 1, d => 1))
+Hn = lambdify(subs(H, ρ => 1, b => 1, c => 1, d => 1), [N, P])
+hs = [Hn(sol.u[i, 1], sol.u[i, 2]) for i in axes(sol.u, 1)]
+@assert maximum(hs) - minimum(hs) < 1e-6
+```
+
+Near the centre the period of the oscillations is `2π/ω` with `ω` the
+imaginary part of the eigenvalues, `√(ρ d)`:
+
+```{julia}
+inner = only(q for q in equilibria(lv) if !iszero(q[N]))
+hopf(lv, inner).frequency
+```
+
+```{julia}
+#| include: false
+@assert isequiv(hopf(lv, inner).frequency, sqrt(ρ * d))
+```
+
+## A Hopf bifurcation
+
+In the Brusselator, an autocatalytic chemical model often used as a minimal
+oscillator, the equilibrium `(A, B/A)` loses stability when `B` passes
+`1 + A²`, and a limit cycle appears with frequency `A`:
+
+```{julia}
+@syms X::positive Y::positive A::positive B::positive
+br = ode(X => A - (B + 1) * X + X^2 * Y, Y => B * X - X^2 * Y)
+eq = only(equilibria(br))
+h = hopf(br, eq)
+```
+
+```{julia}
+hopf(br, eq, B)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(only(hopf(br, eq, B)), 1 + A^2)
+@assert isequiv(h.frequency, A)
+st = stability(br, eq)
+@assert decide(subs(st.condition, A => 1, B => 1.5)) === true
+@assert decide(subs(st.condition, A => 1, B => 2.5)) === false
+```
+
+Beyond the bifurcation a trajectory converges to the cycle rather than to the
+equilibrium:
+
+```{julia}
+tail = simulate(br, [1.0, 1.0], 200; parameters = Dict(A => 1, B => 3), saveat = 150:0.01:200).u
+extrema(tail[:, 1])
+```
+
+```{julia}
+#| include: false
+lo, hi = extrema(tail[:, 1])
+@assert hi - lo > 1        # a sustained oscillation in X
+```
+
+## Predators with a saturating functional response
+
+In the Rosenzweig–MacArthur model the prey has logistic growth and predators
+a type II functional response. The interior equilibrium undergoes a Hopf
+bifurcation as the carrying capacity grows: the "paradox of enrichment".
+
+```{julia}
+@syms K::positive a::positive hh::positive e::positive m::positive
+rm = ode(N => N * (1 - N / K) - a * N * P / (1 + a * hh * N),
+         P => e * a * N * P / (1 + a * hh * N) - m * P)
+inner = only(q for q in equilibria(rm) if !iszero(q[N]) && !iszero(q[P]))
+Kc = hopf(rm, inner, K)
+```
+
+```{julia}
+#| include: false
+# check with numbers: a = e = 1, h = 1, m = 1/2: N* = m/(a(e - a h m)) = 1, Kc = (e + a h m)/(a h (e - a h m)) = 3
+vals = Dict(a => 1, e => 1, hh => 1, m => 1 // 2)
+@assert any(isequiv(subs(k, vals), 3) for k in Kc)
+sr = stability(rm, inner)
+@assert decide(subs(sr.condition, vals..., K => 2)) === true
+@assert decide(subs(sr.condition, vals..., K => 4)) === false
+```

@@ -1,0 +1,136 @@
+---
+title: "Evolutionary invasion analysis"
+subtitle: "Otto & Day, chapter 12, with PracticalCAS"
+engine: julia
+---
+
+To ask which trait evolves, let the resident reach its equilibrium and ask
+whether a rare mutant can grow: its invasion fitness `W(m, r)`. Singular
+strategies, where the selection gradient `∂W/∂m` at `m = r` vanishes, are
+classified by second derivatives into evolutionary end points (CSS),
+branching points, Garden-of-Eden points and repellers.
+
+```{julia}
+using PracticalCAS
+```
+
+## The evolution of virulence
+
+A pathogen strain with virulence `α` (extra host death rate) transmits at
+rate `β(α) = b√α`, so more virulent strains transmit more but with
+diminishing returns; hosts die at rate `μ` and recover at rate `γ`. With the resident
+strain at equilibrium, susceptibles sit at `S* = (μ + α_r + γ)/β(α_r)`, and a
+rare mutant strain's infected hosts change at the per-capita rate
+
+```{julia}
+@syms S::nonneg I::nonneg Iₘ::nonneg m::positive r::positive μ::positive γ::positive b::positive θ::positive Λ::positive
+β(x) = b * sqrt(x)                     # a transmission–virulence trade-off
+model = ode(S => Λ - β(r) * S * I - β(m) * S * Iₘ - μ * S,
+            I => β(r) * S * I - (μ + r + γ) * I,
+            Iₘ => β(m) * S * Iₘ - (μ + m + γ) * Iₘ)
+endemic = only(e for e in equilibria(ode(S => Λ - β(r) * S * I - μ * S, I => β(r) * S * I - (μ + r + γ) * I)) if !iszero(e[I]))
+W = invasion_fitness(model.rhs[3], Iₘ, endemic)
+```
+
+The mutant invades when it has a higher `R₀ = β(α)/(μ + α + γ)`, so
+evolution maximises `R₀`. The singular strategy is an evolutionary end point:
+
+```{julia}
+cs = classify_singular(W, m, r)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(W, β(m) * (μ + r + γ) / β(r) - (μ + m + γ))
+c = only(c for c in cs if decide(c.value > 0) !== false)
+@assert c.kind === :CSS
+@assert isequiv(c.value, μ + γ)
+
+R0(x) = β(x) / (μ + x + γ)
+@assert isequiv(simplify(subs(diff(R0(m), m), m => c.value)), 0)
+```
+
+## Branching: competition for a continuum of resources
+
+With carrying capacity `K(x) = K₀ exp(-x²/(2σ²))` peaking at trait 0 and
+competition between traits `m`, `r` falling off as `exp(-(m - r)²/(2τ²))`,
+the invasion fitness is
+
+```{julia}
+@syms σ::positive τ::positive
+K(z) = exp(-z^2 / (2σ^2))
+Wc = 1 - exp(-(m - r)^2 / (2τ^2)) * K(r) / K(m)
+sc = only(classify_singular(Wc, m, r))
+```
+
+Trait 0 is always convergence stable, but it is evolutionarily stable only if
+competition is broader than the resource distribution; otherwise the
+population branches into two:
+
+```{julia}
+assuming(τ < σ) do
+    only(classify_singular(Wc, m, r)).kind
+end
+```
+
+```{julia}
+#| include: false
+@assert iszero(sc.value)
+@assert decide(sc.convergence) === true
+@assert assuming(() -> only(classify_singular(Wc, m, r)).kind, τ < σ) === :branching
+@assert assuming(() -> only(classify_singular(Wc, m, r)).kind, τ > σ) === :CSS
+```
+
+## A game: hawks and doves
+
+When fitness depends on what others do, the ESS of a matrix game can be found
+directly (see also the replicator dynamics):
+
+```{julia}
+@syms V::positive C::positive
+ess(hawk_dove(V, C))
+```
+
+```{julia}
+#| include: false
+mixed = only(e for e in ess(hawk_dove(V, C)) if length(e.support) == 2)
+@assert isequiv(mixed.x[1], V / C)
+```
+
+## Invasion with class structure
+
+A mutant with juvenile survival `sₘ` in a population of residents with
+survival `s_r`: juveniles `Jₘ` mature to adults `Aₘ`, which produce juveniles
+at a rate reduced by density, `f/(1 + N)`. The invasion matrix is the
+linearisation of the mutant classes at the resident equilibrium.
+
+```{julia}
+@syms J::nonneg Aᵣ::nonneg Jₘ::nonneg Aₘ::nonneg sᵣ::(0, 1) sₘ::(0, 1) f::positive a::(0, 1)
+N = Aᵣ + Aₘ
+st = recurrence(J => f * Aᵣ / (1 + N), Aᵣ => sᵣ * J + a * Aᵣ,
+                Jₘ => f * Aₘ / (1 + N), Aₘ => sₘ * Jₘ + a * Aₘ)
+res = recurrence(J => f * Aᵣ / (1 + Aᵣ), Aᵣ => sᵣ * J + a * Aᵣ)
+eqr = only(e for e in equilibria(res) if !iszero(e[Aᵣ]))
+invd = invasion_fitness(st, [Jₘ, Aₘ], eqr)
+invd.matrix
+```
+
+At `sₘ = sᵣ` the resident equilibrium has growth factor 1; the selection
+gradient, from the reproductive values and stable distribution of the
+invasion matrix, is positive: higher juvenile survival is favoured.
+
+```{julia}
+Am = invd.matrix
+
+grad = selection_gradient(subs(Am, sₘ => m, sᵣ => r), m, r)
+```
+
+```{julia}
+#| include: false
+@assert ispositive(grad) || decide(grad > 0) === true
+# the same from the eigenvalue: λ(sₘ) solves det(Am - λI) = 0 with λ = 1 at sₘ = sᵣ
+@syms λ
+cp = charpoly(subs(Am, sₘ => m, sᵣ => r), λ)
+dλ = simplify(subs(-diff(cp, m) / diff(cp, λ), λ => 1, m => r))
+@assert isequiv(grad, dλ)
+```

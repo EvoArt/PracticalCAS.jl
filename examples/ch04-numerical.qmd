@@ -1,0 +1,123 @@
+---
+title: "Numerical and graphical techniques"
+subtitle: "Otto & Day, chapter 4, with PracticalCAS"
+engine: julia
+---
+
+Before analysing a model, get a feel for it: iterate it, plot it against time,
+cobweb it, and look at its phase plane. `simulate`, `cobweb` and
+`bifurcation_data` return plain arrays, ready for any plotting package (with
+PracticalBayesPlot loaded, `phaseplot` draws phase portraits directly).
+
+```{julia}
+using PracticalCAS
+@syms n::nonneg r::positive K::positive
+```
+
+## Iterating a recurrence
+
+The discrete logistic model `n(t+1) = n + r n (1 - n/K)` approaches `K`
+smoothly for small `r`, oscillates for `1 < r < 2`, and cycles or behaves
+chaotically beyond.
+
+```{julia}
+dl = recurrence(n => n + r * n * (1 - n / K))
+for rv in (0.5, 1.8, 2.2, 2.8)
+    u = simulate(dl, 0.1, 60; parameters = Dict(r => rv, K => 1)).u[:, 1]
+    println("r = $rv: ", round.(u[end-3:end]; digits = 3))
+end
+```
+
+```{julia}
+#| include: false
+u = simulate(dl, 0.1, 200; parameters = Dict(r => 0.5, K => 1)).u[:, 1]
+@assert abs(u[end] - 1) < 1e-8
+u = simulate(dl, 0.1, 400; parameters = Dict(r => 2.2, K => 1)).u[:, 1]
+@assert abs(u[end] - u[end-2]) < 1e-8 && abs(u[end] - u[end-1]) > 0.1    # a 2-cycle
+```
+
+## Cobwebs
+
+A cobweb diagram follows `n(t) → n(t+1)` on the plot of the map against the
+diagonal. Its vertices:
+
+```{julia}
+cobweb(dl, 0.1, 3; parameters = Dict(r => 1.8, K => 1))
+```
+
+```{julia}
+#| include: false
+cw = cobweb(dl, 0.1, 3; parameters = Dict(r => 1.8, K => 1))
+@assert size(cw) == (7, 2) && cw[1, :] == [0.1, 0.0] && cw[3, 1] == cw[3, 2]
+```
+
+## Bifurcation diagram
+
+The long-run states as `r` varies show the period-doubling route to chaos.
+Counting the distinct states at a few values:
+
+```{julia}
+bd = bifurcation_data(dl, r, [1.5, 2.2, 2.5, 2.7]; ic = 0.1, parameters = Dict(K => 1), keep = 64)
+for rv in (1.5, 2.2, 2.5, 2.7)
+    states = bd.state[bd.parameter .== rv]
+    println("r = $rv: ", length(unique(round.(states; digits = 6))), " distinct states")
+end
+```
+
+```{julia}
+#| include: false
+cnt(rv) = length(unique(round.(bd.state[bd.parameter .== rv]; digits = 6)))
+@assert cnt(1.5) == 1 && cnt(2.2) == 2 && cnt(2.5) == 4 && cnt(2.7) > 8
+```
+
+The analysis in chapters 5 and 11 explains these numbers: `K` is stable for
+`r < 2` and the 2-cycle for `2 < r < √6`.
+
+```{julia}
+stability(dl, Dict(n => K)).condition
+```
+
+```{julia}
+#| include: false
+@assert isequiv(stability(dl, Dict(n => K)).condition, r < 2)
+```
+
+## Solving an ODE numerically
+
+The numerical solution of the logistic ODE agrees with the exact one:
+
+```{julia}
+@syms t::nonneg n₀::positive
+lg = ode(n => r * n * (1 - n / K))
+sol = simulate(lg, 0.1, 10; parameters = Dict(r => 1, K => 1))
+exact = subs(dsolve(lg, t; ic = n₀), r => 1, K => 1, n₀ => 0.1)
+maximum(abs(sol.u[i, 1] - evalf(exact, t => sol.t[i])) for i in eachindex(sol.t))
+```
+
+```{julia}
+#| include: false
+@assert maximum(abs(sol.u[i, 1] - evalf(exact, t => sol.t[i])) for i in eachindex(sol.t)) < 1e-7
+```
+
+## Phase plane: nullclines and trajectories
+
+For Lotka–Volterra competition the nullclines are lines; where they cross is
+the coexistence equilibrium, and trajectories go there when each species
+limits itself more than the other.
+
+```{julia}
+@syms n₁::nonneg n₂::nonneg α::positive β::positive
+comp = ode(n₁ => n₁ * (1 - n₁ - α * n₂), n₂ => n₂ * (1 - n₂ - β * n₁))
+nullclines(comp, 1, n₂), nullclines(comp, 2, n₂)
+```
+
+```{julia}
+traj = simulate(comp, [0.05, 0.9], 60; parameters = Dict(α => 0.5, β => 0.5))
+traj.u[end, :]
+```
+
+```{julia}
+#| include: false
+@assert all(abs.(traj.u[end, :] .- 2 / 3) .< 1e-6)      # (1 - α)/(1 - αβ)
+@assert any(isequiv(c, (1 - n₁) / α) for c in nullclines(comp, 1, n₂))
+```

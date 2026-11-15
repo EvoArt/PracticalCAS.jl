@@ -1,0 +1,144 @@
+---
+title: "General solutions: models with several variables"
+subtitle: "Otto & Day, chapter 9, with PracticalCAS"
+engine: julia
+---
+
+A linear model `dn/dt = A n` has the general solution `n(t) = exp(At) n(0)`,
+and `n(t+1) = A n(t)` has `n(t) = Aᵗ n(0)`. Both come from the eigenvalues
+and eigenvectors of `A` (`matexp`, `matpow`); `dsolve` and `rsolve` apply
+them to models. Nonlinear models can sometimes be brought to this form by a
+change of variables.
+
+```{julia}
+using PracticalCAS
+@syms t::nonneg
+```
+
+## Oscillations: complex eigenvalues
+
+Deviations from an equilibrium that spiral in have complex eigenvalues
+`-a ± ib`. The solution is real, with `exp(-at)` times `cos(bt)` and `sin(bt)`:
+
+```{julia}
+A = [-1 2; -2 -1]
+eigvals(A)
+```
+
+```{julia}
+E = matexp(A, t)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(E[1, 1], exp(-t) * cos(2t))
+@assert isequiv(E[1, 2], exp(-t) * sin(2t))
+@assert all(e -> !has(e, PracticalCAS.IM), E)
+```
+
+## A chain of compartments: a repeated eigenvalue
+
+Individuals pass through two stages, each left at rate `γ`
+(`dx/dt = -γx`, `dy/dt = γx - γy`). The matrix has the repeated eigenvalue
+`-γ` with only one eigenvector, and the solution has a `t exp(-γt)` term
+(the second stage peaks at `t = 1/γ`):
+
+```{julia}
+@syms x::nonneg y::nonneg γ::positive x₀::positive
+chain = dsolve(ode(x => -γ * x, y => γ * x - γ * y), t; ic = [x₀, 0])
+```
+
+```{julia}
+solve(diff(chain[2], t), t)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(chain[2], γ * x₀ * t * exp(-γ * t))
+@assert isequiv(only(solve(diff(chain[2], t), t)), 1 / γ)
+```
+
+## A discrete-time model with two classes
+
+Juveniles `J` become adults with probability `s`; adults survive with
+probability `a` and produce `b` juveniles each. The solution is a sum of
+two geometric terms, one for each eigenvalue; the dominant one sets the
+long-term growth rate.
+
+```{julia}
+@syms τ::natural J::nonneg Ad::nonneg s::(0, 1) a::(0, 1) b::positive
+L = [0 b; s a]
+eigvals(L)
+```
+
+```{julia}
+nt = rsolve(recurrence(J => b * Ad, Ad => s * J + a * Ad), τ; ic = [10, 0])
+```
+
+```{julia}
+#| include: false
+pars = (s => 0.3, a => 0.5, b => 2)
+adv(v) = [2 * v[2], 0.3 * v[1] + 0.5 * v[2]]
+v3 = adv(adv(adv([10.0, 0.0])))
+@assert isapprox(evalf(subs(nt[1], τ => 3), pars...), v3[1]; rtol = 1e-9)
+@assert isapprox(evalf(subs(nt[2], τ => 3), pars...), v3[2]; rtol = 1e-9)
+```
+
+With numbers, the powers of a matrix with complex eigenvalues are real too:
+
+```{julia}
+matpow([0 -1; 1 0], τ)
+```
+
+```{julia}
+#| include: false
+P = matpow([0 -1; 1 0], τ)
+@assert all(e -> !has(e, PracticalCAS.IM), P)
+@assert all(k -> evalf(subs(P, τ => k)) ≈ Float64.([0 -1; 1 0]^k), 0:5)
+```
+
+## Transformations: total size and frequency
+
+Two types growing exponentially at rates `r₁` and `r₂`: in terms of the total
+`N = n₁ + n₂` and the frequency `p = n₁/N`, the frequency follows the
+logistic equation of selection, `dp/dt = (r₁ - r₂) p (1 - p)`, which we can
+solve directly.
+
+```{julia}
+@syms n₁::positive n₂::positive r₁::positive r₂::positive p::(0, 1) p₀::(0, 1)
+dp = simplify(diff(n₁ / (n₁ + n₂), n₁) * r₁ * n₁ + diff(n₁ / (n₁ + n₂), n₂) * r₂ * n₂)
+dp_p = simplify(subs(dp, n₁ => p * n₂ / (1 - p)))
+```
+
+```{julia}
+pt = dsolve(dp_p, p, t; ic = p₀)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(dp_p, (r₁ - r₂) * p * (1 - p))
+@assert isequiv(diff(pt, t), (r₁ - r₂) * pt * (1 - pt))
+@assert isequiv(subs(pt, t => 0), p₀)
+```
+
+## Forced linear models
+
+A population with constant immigration `m` and density-independent death
+`d` has an affine solution; with an oscillating input, the solution is a
+transient plus an oscillation:
+
+```{julia}
+@funs u
+@syms d::positive m::positive
+dsolve(diff(u(t), t) ~ m - d * u(t), u(t); ic = (0, [0]))
+```
+
+```{julia}
+osc = dsolve(diff(u(t), t, 2) + u(t) ~ sin(2t), u(t))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(dsolve(diff(u(t), t) ~ m - d * u(t), u(t); ic = (0, [0])), m / d * (1 - exp(-d * t)))
+@assert isequiv(simplify(diff(osc, t, 2) + osc), sin(2t))
+```

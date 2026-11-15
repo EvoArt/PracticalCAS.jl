@@ -1,0 +1,197 @@
+---
+title: "Discrete-time stochastic models"
+subtitle: "Otto & Day, chapter 14, with PracticalCAS"
+engine: julia
+---
+
+Markov chains, genetic drift in the Wright–Fisher and Moran models, and
+branching processes. With symbolic parameters, transition matrices give
+exact stationary distributions and absorption probabilities, recurrences
+give fixation probabilities for any population size, and generating
+functions give extinction probabilities.
+
+```{julia}
+using PracticalCAS
+```
+
+## A two-state Markov chain
+
+A site switches from state 1 to 2 with probability `a` and back with
+probability `b` each step. The stationary distribution, and the distribution
+after `t` steps (approaching it geometrically, at rate `1 - a - b`):
+
+```{julia}
+@syms a::(0, 1) b::(0, 1) t::natural
+P = [1-a a; b 1-b]
+stationary_distribution(P)
+```
+
+```{julia}
+Pt = matpow(P, t)
+Pt[1, 1]
+```
+
+```{julia}
+#| include: false
+πs = stationary_distribution(P)
+@assert isequiv(πs[1], b / (a + b))
+@assert isequiv(Pt[1, 1], b / (a + b) + a / (a + b) * (1 - a - b)^t)
+```
+
+## Genetic drift: loss of heterozygosity
+
+In a Wright–Fisher population of `N` diploids, the expected heterozygosity
+declines by the factor `1 - 1/(2N)` each generation:
+
+```{julia}
+@syms N::positive H::(0, 1) H₀::(0, 1)
+Ht = rsolve(recurrence(H => (1 - 1 / (2N)) * H), t)
+```
+
+```{julia}
+#| include: false
+@assert all(isapprox(evalf(Ht, H₀ => 0.5, N => 10, t => k), 0.5 * (1 - 1 / 20)^k) for k in 0:5)
+
+```
+
+## Fixation in a small population
+
+The transition matrix of the haploid Wright–Fisher model with `N = 3`
+individuals; the neutral fixation probability from `i` copies is `i/N`:
+
+```{julia}
+wf = wright_fisher(3)
+```
+
+```{julia}
+fix = absorption(wf, [2, 3], [1, 4])
+fix.probabilities
+```
+
+```{julia}
+#| include: false
+@assert all(isequiv.(fix.probabilities[:, 2], [1 // 3, 2 // 3]))
+@assert all(isequiv.(sum(wf; dims = 2), 1))
+```
+
+With selection the fixation probabilities are exact rational functions of the
+selection coefficient. For the Moran model with relative fitness `r`:
+
+```{julia}
+@syms r::positive
+mo = moran(3; r = r)
+absorption(mo, [2, 3], [1, 4]).probabilities[:, 2]
+```
+
+```{julia}
+#| include: false
+pr = absorption(mo, [2, 3], [1, 4]).probabilities[:, 2]
+@assert isequiv(pr[1], (1 - 1 / r) / (1 - 1 / r^3))
+```
+
+## Fixation for any population size
+
+In the Moran model the number of mutants goes up with probability
+proportional to `r i (N - i)` and down with `i (N - i)`. Conditioning on the
+first step gives a second-order recurrence for the fixation probability
+`x(i)`, with `x(0) = 0` and `x(N) = 1`:
+
+```{julia}
+@funs x
+@syms i::natural Nₘ::natural
+rsolve(x(i + 1) - (1 + r) * x(i) + r * x(i - 1) ~ 0, x(i); bc = [x(0) => 0, x(Nₘ) => 1])
+```
+
+Written with the ratio of the down to the up probability, `1/r`, this is
+the classical result, which `fixation_probability` computes for any
+birth–death chain:
+
+```{julia}
+@syms j::natural
+ρ = fixation_probability(r * j * (Nₘ - j), j * (Nₘ - j), j, 1, Nₘ)
+```
+
+```{julia}
+fixation_probability(j * (Nₘ - j), j * (Nₘ - j), j, i, Nₘ)     # neutral
+```
+
+```{julia}
+#| include: false
+@assert isequiv(ρ, (1 - 1 / r) / (1 - 1 / r^Nₘ))
+@assert isequiv(subs(ρ, Nₘ => 3), pr[1])
+@assert isequiv(fixation_probability(j * (Nₘ - j), j * (Nₘ - j), j, i, Nₘ), i / Nₘ)
+@assert isequiv(rsolve(x(i + 1) - (1 + r) * x(i) + r * x(i - 1) ~ 0, x(i); bc = [x(0) => 0, x(Nₘ) => 1]),
+                (r^i - 1) / (r^Nₘ - 1))
+```
+
+A beneficial mutation (`r = 1 + s`) in a large population fixes with
+probability about `s/(1 + s)`, not 1:
+
+```{julia}
+@syms σ::positive
+limit(subs(ρ, r => 1 + σ), Nₘ, ∞)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(limit(subs(ρ, r => 1 + σ), Nₘ, ∞), σ / (1 + σ))
+```
+
+## Branching processes
+
+Each individual leaves 0 or 2 offspring, 2 with probability `p`. The
+offspring generating function is `G(s) = 1 - p + p s²`; the mean is `2p`,
+and when it exceeds one the lineage escapes extinction with probability
+`1 - q`, where `q` is the smallest root of `G(s) = s`:
+
+```{julia}
+@syms s p::(0, 1)
+G = 1 - p + p * s^2
+pgf_moments(G, s)
+```
+
+```{julia}
+q = assuming(p > 1 // 2) do
+    extinction_probability(G, s)
+end
+```
+
+```{julia}
+#| include: false
+@assert isequiv(q, (1 - p) / p)
+@assert isequiv(assuming(() -> extinction_probability(G, s), p < 1 // 2), 1)
+```
+
+With Poisson offspring (mean `R`) there is no closed form, but with numbers
+the extinction probability is found by iterating `q ← G(q)`:
+
+```{julia}
+qp = extinction_probability(exp(2 * (s - 1)), s)
+```
+
+```{julia}
+#| include: false
+@assert abs(evalf(qp) - exp(2 * (evalf(qp) - 1))) < 1e-12 && evalf(qp) < 1
+```
+
+The generating function of the population size after `t` generations is the
+`t`-fold composition of `G`, so the probability of extinction by generation
+`t` is `G` applied `t` times to 0:
+
+```{julia}
+extinct_by(k) = k == 0 ? toterm(0) : simplify(subs(G, s => extinct_by(k - 1)))
+[extinct_by(k) for k in 1:3]
+```
+
+With `p = 3/4` these increase to the extinction probability `1/3`:
+
+```{julia}
+ext = accumulate((q, _) -> 1 / 4 + 3 / 4 * q^2, 1:12; init = 0.0)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(extinct_by(2), 1 - p + p * (1 - p)^2)
+@assert issorted(ext) && abs(ext[end] - 1 / 3) < 1e-3
+```
+

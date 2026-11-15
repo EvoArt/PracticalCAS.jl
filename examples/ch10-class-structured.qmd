@@ -1,0 +1,132 @@
+---
+title: "Class-structured populations"
+subtitle: "Otto & Day, chapter 10, with PracticalCAS"
+engine: julia
+---
+
+When individuals differ by age, stage or location, the population is a vector
+and one time step is multiplication by a projection matrix. Its dominant
+eigenvalue is the long-term growth factor, the right eigenvector the stable
+class distribution, the left eigenvector the reproductive values.
+
+```{julia}
+using PracticalCAS
+@syms λ s₁::(0, 1) s₂::(0, 1) f₁::positive f₂::positive f₃::positive
+```
+
+## A Leslie matrix
+
+Three age classes: fecundities `fᵢ` and survival `sᵢ` from class `i` to `i+1`.
+
+```{julia}
+L = leslie([f₁, f₂, f₃], [s₁, s₂])
+```
+
+Its characteristic equation is the Euler–Lotka equation: with survivorship
+`l₁ = 1`, `l₂ = s₁`, `l₃ = s₁ s₂`, the growth factor solves
+`Σ λ⁻ˣ lₓ fₓ = 1`.
+
+```{julia}
+el = euler_lotka([1, s₁, s₁ * s₂], [f₁, f₂, f₃], λ)
+```
+
+```{julia}
+#| include: false
+cp = charpoly(L, λ)
+@assert isequiv(cp, -λ^3 * (el.lhs - el.rhs)) || isequiv(cp, λ^3 * (el.lhs - el.rhs))
+```
+
+## A numerical example
+
+```{julia}
+Ln = leslie([0, 1, 4], [1 // 2, 1 // 4])
+vals = eigvals(Ln)
+```
+
+```{julia}
+λ₁ = only(filter(v -> isreal(v) && evalf(v) > 0, vals))
+```
+
+The stable age distribution and the reproductive values:
+
+```{julia}
+w = stable_distribution(Ln, λ₁)
+```
+
+```{julia}
+v = reproductive_values(Ln, λ₁)
+```
+
+```{julia}
+#| include: false
+@assert λ₁ == 1
+@assert all(isequiv.(Ln * w, w)) && isequiv(sum(w), 1)
+
+@assert all(isequiv.(permutedims(v) * Ln, permutedims(v)))
+@assert isequiv(w[1], 8 // 13)
+```
+
+The elasticities of `λ` to each entry sum to one: here the population is most
+sensitive to survival to the second age class.
+
+```{julia}
+ela = elasticity(Ln, λ₁)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(sum(ela), 1)
+@assert isequiv(ela[2, 1], 2 // 5) && evalf(ela[2, 1]) == maximum(evalf.(ela))
+S = sensitivity(Ln, λ₁)
+# check one sensitivity by differentiating λ along the entry
+@syms h
+Lh = symbolic(Ln); Lh[2, 1] = Lh[2, 1] + h
+cph = charpoly(Lh, λ)
+dλ = -subs(diff(cph, h), h => 0, λ => 1) / subs(diff(cph, λ), h => 0, λ => 1)
+@assert isequiv(S[2, 1], dλ)
+```
+
+## The general solution
+
+`n(t) = Lᵗ n(0)`; in the long run every class grows by the factor `λ₁` and the
+distribution approaches `w`:
+
+```{julia}
+@syms t::natural
+Lt = matpow(Ln, t)
+nt = Lt * [10, 0, 0]
+[evalf(subs(x, t => 40)) for x in nt] ./ evalf(subs(sum(nt), t => 40))
+```
+
+```{julia}
+#| include: false
+fr = [evalf(subs(x, t => 40)) for x in nt] ./ evalf(subs(sum(nt), t => 40))
+@assert all(abs.(fr .- evalf.(w)) .< 1e-3)
+@assert all(isapprox.(evalf.(subs(Lt, t => 3)), evalf(Ln^3); atol = 1e-10))
+```
+
+## Continuous time: a stage-structured model
+
+Juveniles mature at rate `m` and die at rate `μⱼ`; adults reproduce at rate
+`b` and die at rate `μₐ`. The population grows when the dominant eigenvalue
+of the rate matrix is positive, which happens exactly when an individual
+replaces itself, `R₀ = b m / ((m + μⱼ) μₐ) > 1`:
+
+```{julia}
+@syms J::nonneg A::nonneg m::positive μⱼ::positive μₐ::positive b::positive
+st = ode(J => b * A - (m + μⱼ) * J, A => m * J - μₐ * A)
+R₀ = reproduction_number([b * A, 0], [(m + μⱼ) * J, μₐ * A - m * J], [J, A], Dict(J => 0, A => 0))
+```
+
+```{julia}
+stability(st, Dict(J => 0, A => 0)).condition
+```
+
+```{julia}
+#| include: false
+@assert isequiv(R₀, b * m / ((m + μⱼ) * μₐ))
+c0 = stability(st, Dict(J => 0, A => 0)).condition
+@assert decide(subs(c0, b => 1, m => 1, μⱼ => 1, μₐ => 1)) === true     # R₀ = 1/2
+@assert decide(subs(c0, b => 4, m => 1, μⱼ => 1, μₐ => 1)) === false    # R₀ = 2
+
+```

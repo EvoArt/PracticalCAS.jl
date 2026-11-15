@@ -1,0 +1,140 @@
+---
+title: "Functions and approximations"
+subtitle: "Otto & Day, primer 1, with PracticalCAS"
+engine: julia
+---
+
+The first primer collects the calculus used throughout the book: derivatives,
+limits, Taylor approximations, logarithms and exponentials, and sums. Each has
+a direct counterpart here.
+
+```{julia}
+using PracticalCAS
+@syms x t r::positive K::positive a::positive b::positive n::positive
+```
+
+## Derivatives and maxima
+
+The per-capita birth rate `b(n) = a n exp(-b n)` peaks where its derivative
+vanishes; the second derivative confirms a maximum.
+
+```{julia}
+f = a * n * exp(-b * n)
+crit = solve(diff(f, n), n)
+```
+
+```{julia}
+simplify(subs(diff(f, n, 2), n => crit[1]))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(only(crit), 1 / b)
+@assert isnegative(simplify(subs(diff(f, n, 2), n => 1 / b)))
+```
+
+## Limits
+
+Limits describe long-term behaviour and the values of expressions where they
+are formally undefined (by L'Hôpital's rule):
+
+```{julia}
+limit(K * n / (K + n), n, ∞), limit((exp(r * t) - 1) / t, t, 0)
+```
+
+```{julia}
+#| include: false
+@assert limit(K * n / (K + n), n, ∞) == K
+@assert isequiv(limit((exp(r * t) - 1) / t, t, 0), r)
+```
+
+## Taylor approximations
+
+Near `x = 0`, `log(1 + x) ≈ x - x²/2` and `exp(x) ≈ 1 + x`. The approximation
+`(1 + r)ᵗ ≈ exp(r t)` for small `r` is why discrete and continuous growth
+models agree when changes per step are small.
+
+```{julia}
+taylor(log(1 + x), x, 0, 3), taylor(exp(x), x, 0, 2)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(taylor(log(1 + x), x, 0, 3), x - x^2 / 2 + x^3 / 3)
+```
+
+A function of two variables has a multivariate Taylor expansion; to first
+order it is the linear approximation used in every stability analysis.
+
+```{julia}
+@syms y
+linearize(x * exp(y), [x, y], [1, 0])
+```
+
+```{julia}
+#| include: false
+@assert isequiv(linearize(x * exp(y), [x, y], [1, 0]), x + y)
+```
+
+## Exponentials and logarithms
+
+Doubling time of exponential growth: solve `exp(r t) = 2`.
+
+```{julia}
+solve(exp(r * t) ~ 2, t)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(only(solve(exp(r * t) ~ 2, t)), log(toterm(2)) / r)
+
+```
+
+## Sums
+
+Geometric series appear in models with immigration and in probability. Sums
+of powers have closed forms too.
+
+```{julia}
+@syms k::natural T::natural q
+summation(q^k, k, 0, T - 1), summation(k, k, 1, T)
+```
+
+```{julia}
+summation(q^k, k, 0, ∞)          # valid for |q| < 1
+```
+
+```{julia}
+#| include: false
+@assert isequiv(summation(q^k, k, 0, T - 1), (q^T - 1) / (q - 1))
+@assert isequiv(summation(k, k, 1, T), T * (T + 1) / 2)
+@assert isequiv(summation(q^k, k, 0, ∞), 1 / (1 - q))
+```
+
+Factorials and binomial coefficients are symbolic functions;
+`binomial(n, 2)` is the number of pairs.
+
+```{julia}
+@syms m::natural
+binomial(m, 2), simplify(factorial(m + 2) / factorial(m))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(binomial(m, 2), m * (m - 1) / 2)
+@assert isequiv(simplify(factorial(m + 2) / factorial(m)), (m + 1) * (m + 2))
+```
+
+## Integrals
+
+Integrals give the total from a rate, and normalising constants:
+
+```{julia}
+integrate(r * exp(-r * t), t, 0, ∞), integrate(exp(-x^2 / 2), x, -∞, ∞)
+```
+
+```{julia}
+#| include: false
+@assert integrate(r * exp(-r * t), t, 0, ∞) == 1
+@assert isequiv(integrate(exp(-x^2 / 2), x, -∞, ∞), sqrt(2 * PracticalCAS.PI))
+```

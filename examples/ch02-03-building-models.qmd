@@ -1,0 +1,133 @@
+---
+title: "Building models"
+subtitle: "Otto & Day, chapters 2 and 3, with PracticalCAS"
+engine: julia
+---
+
+Chapters 2 and 3 build the classic models from verbal descriptions: write down
+what happens to individuals in one time step (or per unit time) and collect
+terms. The algebra of those derivations is exactly what a CAS is for.
+
+```{julia}
+using PracticalCAS
+```
+
+## Diploid selection
+
+With allele frequency `p`, random mating gives genotype frequencies
+`p²`, `2pq`, `q²`; viability selection weights them by `WAA`, `WAa`, `Waa`.
+The frequency of `A` among the survivors:
+
+```{julia}
+@syms p::(0, 1) WAA::positive WAa::positive Waa::positive
+q = 1 - p
+Wbar = p^2 * WAA + 2p * q * WAa + q^2 * Waa
+p′ = (p^2 * WAA + p * q * WAa) / Wbar
+Δp = simplify(p′ - p)
+```
+
+The change factors into `p q` times a difference of marginal fitnesses, so
+`p = 0` and `p = 1` are always equilibria:
+
+```{julia}
+factor(Δp)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(Δp, p * (1 - p) * (p * (WAA - WAa) + (1 - p) * (WAa - Waa)) / Wbar)
+```
+
+With additive fitnesses `1 + s`, `1 + s/2`, `1` and weak selection, the change
+per generation is approximately `s p (1 - p)/2`: the logistic equation of
+continuous-time selection.
+
+```{julia}
+@syms s
+Δs = subs(Δp, WAA => 1 + s, WAa => 1 + s / 2, Waa => 1)
+taylor(Δs, s, 0, 1)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(taylor(Δs, s, 0, 1), s * p * (1 - p) / 2)
+```
+
+## Mutation
+
+Alleles mutate from `A` to `a` at rate `μ` and back at rate `ν`:
+
+```{julia}
+@syms μ::(0, 1) ν::(0, 1)
+mut = recurrence(p => (1 - μ) * p + ν * (1 - p))
+equilibria(mut)
+```
+
+```{julia}
+rsolve(mut, sym(:t; natural = true))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(only(equilibria(mut))[p], ν / (μ + ν))
+```
+
+## Migration
+
+An island receives a fraction `m` of migrants each generation from a mainland
+where the allele frequency is `pₘ`:
+
+```{julia}
+@syms m::(0, 1) pₘ::(0, 1) t::natural p₀::(0, 1)
+mig = rsolve(recurrence(p => (1 - m) * p + m * pₘ), t)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(subs(mig, t => 0), sym(:p₀; lo = 0, hi = 1))
+@assert isequiv(limit(subs(mig, m => 1 // 2), t, ∞), pₘ)
+```
+
+## From discrete to continuous time
+
+A discrete-time model with growth factor `1 + r Δt` per interval `Δt` becomes
+the continuous model `dn/dt = r n` as `Δt → 0`:
+
+```{julia}
+@syms r::positive n::positive Δt::positive
+limit(((1 + r * Δt) * n - n) / Δt, Δt, 0)
+```
+
+and the discrete solution `(1 + r Δt)^(t/Δt)` tends to `exp(r t)`:
+
+```{julia}
+@syms τ::positive
+limit((1 + r * Δt)^(τ / Δt), Δt, 0)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(limit(((1 + r * Δt) * n - n) / Δt, Δt, 0), r * n)
+@assert isequiv(limit((1 + r * Δt)^(τ / Δt), Δt, 0), exp(r * τ))
+```
+
+## Logistic growth and its relatives
+
+The same reasoning gives the logistic model and the discrete-time logistic,
+Ricker and Beverton–Holt models; all have the equilibria `0` and `K`.
+
+```{julia}
+@syms K::positive R::positive
+models = [ode(n => r * n * (1 - n / K)),
+          recurrence(n => n + r * n * (1 - n / K)),
+          recurrence(n => n * exp(r * (1 - n / K))),
+          recurrence(n => R * n / (1 + (R - 1) * n / K))]
+[sort([e[n] for e in equilibria(mod)]; by = string) for mod in models]
+```
+
+```{julia}
+#| include: false
+for mod in models
+    @assert Set(e[n] for e in equilibria(mod)) == Set([toterm(0), K])
+end
+```

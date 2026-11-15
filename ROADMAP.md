@@ -50,6 +50,23 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
       elasticity; next-generation matrix and `reproduction_number`;
       absorption probabilities and times.
 
+- [x] Otto & Day coverage (0.2): a tested Quarto notebook for every chapter,
+      primer and the perturbation appendix (`examples/`, table in the README).
+      New for it: `factorial`, `binomial`, `gamma` and the gamma/beta integrals;
+      `summation` (polynomial × geometric, Poisson and binomial sums) and
+      `product`; `perturb` (regular perturbation of roots); `rsolve` for linear
+      recurrences of any order with initial or boundary values and for
+      non-autonomous first-order ones; `dsolve` with any forcing (variation of
+      parameters); `matexp`/`matpow` for non-diagonalisable matrices (Putzer)
+      and in real form (`realform`, `trig_linearize`); `cycles` and their
+      stability, `hopf` (and Neimark–Sacker), `conserved_quantity`;
+      `quasi_steady_state`; `invasion_matrix`, structured `invasion_fitness`
+      and `selection_gradient`, `euler_lotka`; `stationary_distribution`,
+      `pgf`, `pgf_moments`, `extinction_probability`, `fixation_probability`,
+      `moran`, `wright_fisher`, `diffusion_fixation`, `diffusion_time`,
+      `diffusion_stationary`; `simulate` (maps; adaptive Dormand–Prince for
+      ODEs), `cobweb`, `bifurcation_data`.
+
 - [x] Optional PracticalBayesPlot extension: symbolic influence graphs,
       two-variable phase portraits, and ternary game/frequency dynamics, with
       numerical trajectories, equilibria marked by local stability, and SVG,
@@ -57,21 +74,18 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
 
 ## Next, for Otto & Day
 
-- [ ] Worked examples of every chapter as Quarto notebooks (`examples/`), each
-      also a test.
-- [ ] Periodic behaviour (ch. 11): 2-cycles of maps (`f(f(n)) = n`), Hopf
-      conditions (trace = 0 with det > 0).
-- [ ] Perturbation and separation of time scales (appendix): series in a small
-      parameter, quasi-steady states.
-- [ ] Probability primer and stochastic chapters (13–15): distributions,
-      generating functions, branching-process extinction (`G(s) = s`),
-      Wright–Fisher/Moran fixation, diffusion approximations (link to
-      PracticalProbability).
-- [ ] `dsolve` with exponential/trigonometric forcing (undetermined
-      coefficients), exact equations, homogeneous equations.
-- [ ] `rsolve` for linear recurrences of higher order and non-autonomous terms.
-- [ ] Real forms of complex solutions of linear systems (cos/sin instead of
-      complex exponentials); Jordan forms for non-diagonalisable matrices.
+- [ ] Stochastic simulation (Gillespie, Wright–Fisher sampling) to sit beside
+      the analytical results of chapters 14–15; Kolmogorov equations through
+      generating-function PDEs.
+- [ ] Singular perturbation (roots that move to infinity as ε → 0, matched
+      asymptotics); averaging for weakly nonlinear oscillations.
+- [ ] `dsolve`: exact and homogeneous first-order equations; linear equations
+      with variable coefficients beyond reduction of order.
+- [ ] Real forms of complex powers and exponentials with symbolic (sign
+      unknown) discriminants; explicit Jordan forms.
+- [ ] Numerical fallbacks for transcendental extinction and fixed-point
+      equations with symbolic parameters (`RootOf`-style answers).
+
 - [ ] PIP plotting, nullcline overlays, and parameter bifurcation diagrams.
 - [ ] Optional Makie rendering of the backend-independent plotting data.
 

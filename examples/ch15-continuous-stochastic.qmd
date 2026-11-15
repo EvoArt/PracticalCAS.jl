@@ -1,0 +1,162 @@
+---
+title: "Continuous-time stochastic models"
+subtitle: "Otto & Day, chapter 15, with PracticalCAS"
+engine: julia
+---
+
+In continuous time a Markov chain is described by rates. The probabilities of
+the states obey linear ODEs, the Kolmogorov forward equations, solved by the
+matrix exponential of the rate matrix. For large populations, allele
+frequencies follow a diffusion: a mean change `M(p)` and a variance `V(p)` per
+unit time determine fixation probabilities, absorption times and stationary
+distributions.
+
+```{julia}
+using PracticalCAS
+@syms t::nonneg
+```
+
+## A two-state chain in continuous time
+
+A gene switches on at rate `α` and off at rate `β`. The rate matrix has rows
+summing to zero; the transition probabilities are `exp(Q t)`:
+
+```{julia}
+@syms α::positive β::positive
+Q = [-α α; β -β]
+Pt = matexp(Q, t)
+```
+
+```{julia}
+stationary_distribution(Q; continuous = true)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(Pt[1, 1], β / (α + β) + α / (α + β) * exp(-(α + β) * t))
+@assert all(isequiv.(stationary_distribution(Q; continuous = true), [β / (α + β), α / (α + β)]))
+```
+
+## The linear birth–death process
+
+Each individual gives birth at rate `λ` and dies at rate `μ`. The expected
+population size follows `dm/dt = (λ - μ) m`:
+
+```{julia}
+@syms λ::positive μ::positive m::positive n₀::positive
+dsolve(ode(m => (λ - μ) * m), t; ic = n₀)
+```
+
+The first event in a lineage is a birth with probability `λ/(λ + μ)`, so the
+lineage of one individual is a branching process with offspring generating
+function `(μ + λ s²)/(λ + μ)`. It escapes extinction with probability
+`1 - μ/λ` when `λ > μ`:
+
+```{julia}
+@syms s
+assuming(λ > μ) do
+    extinction_probability((μ + λ * s^2) / (λ + μ), s)
+end
+```
+
+```{julia}
+#| include: false
+@assert isequiv(dsolve(ode(m => (λ - μ) * m), t; ic = n₀), n₀ * exp((λ - μ) * t))
+@assert isequiv(assuming(() -> extinction_probability((μ + λ * s^2) / (λ + μ), s), λ > μ), μ / λ)
+```
+
+The forward equations for a small birth–death chain on `{0, 1, 2}` (absorbing
+at 0; births from 1 to 2, deaths from 2 to 1 and from 1 to 0) give the
+probability of extinction by time `t`:
+
+```{julia}
+Qbd = [0 0 0; μ -(λ + μ) λ; 0 2μ -2μ]
+P3 = matexp(Qbd, t)
+simplify(P3[2, 1])
+```
+
+```{julia}
+#| include: false
+vals = Dict(λ => 1, μ => 1)
+num = evalf(subs(P3[2, 1], vals..., t => 1.5))
+# compare with a numerical solution of the forward equations
+fw = simulate(ode(sym(:p0) => μ * sym(:p1), sym(:p1) => -(λ + μ) * sym(:p1) + 2μ * sym(:p2),
+                  sym(:p2) => λ * sym(:p1) - 2μ * sym(:p2)), [0, 1, 0], 1.5; parameters = vals)
+@assert abs(fw.u[end, 1] - num) < 1e-8
+@assert abs(evalf(subs(P3[2, 1], vals..., t => 60)) - 1) < 1e-10
+
+```
+
+## Diffusion: fixation probabilities
+
+With selection coefficient `s` in a population of size `N`, the allele
+frequency has `M(p) = s p (1 - p)` and `V(p) = p (1 - p)/N`. Kimura's
+fixation probability:
+
+```{julia}
+@syms p::(0, 1) σ::positive N::positive
+u = diffusion_fixation(σ * p * (1 - p), p * (1 - p) / N, p)
+```
+
+A single new mutant (`p = 1/N`) in a large population fixes with probability
+close to `2σ`:
+
+```{julia}
+taylor(limit(subs(u, p => 1 / N), N, ∞), σ, 0, 1)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(u, (1 - exp(-2N * σ * p)) / (1 - exp(-2N * σ)))
+@assert isequiv(limit(subs(u, p => 1 / N), N, ∞), 1 - exp(-2σ))
+@assert isequiv(taylor(limit(subs(u, p => 1 / N), N, ∞), σ, 0, 1), 2σ)
+```
+
+Without selection the fixation probability is the initial frequency (the
+limit `σ → 0`):
+
+```{julia}
+limit(u, σ, 0)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(limit(u, σ, 0), p)
+```
+
+## Time to absorption
+
+For a neutral allele the expected time until it is lost or fixed solves
+`(V/2) T'' = -1` with `T(0) = T(1) = 0`:
+
+```{julia}
+T = diffusion_time(0, p * (1 - p) / N, p)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(T, -2N * (p * log(p) + (1 - p) * log(1 - p)))
+@assert isequiv(simplify(p * (1 - p) / (2N) * diff(T, p, 2)), -1)
+```
+
+## Stationary distribution: mutation and drift
+
+With mutation at rates `μ` (to `a`) and `ν` (back to `A`), the frequency never
+settles, but its distribution does: a beta distribution.
+
+```{julia}
+@syms ν::positive
+φ = diffusion_stationary(ν * (1 - p) - μ * p, p * (1 - p) / N, p)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(φ, p^(2N * ν - 1) * (1 - p)^(2N * μ - 1) * gamma(2N * (μ + ν)) / (gamma(2N * ν) * gamma(2N * μ)))
+@assert isequiv(integrate(p * φ, p, 0, 1), ν / (μ + ν))
+```
+
+Its mean is the deterministic equilibrium `ν/(μ + ν)`:
+
+```{julia}
+integrate(p * φ, p, 0, 1)
+```

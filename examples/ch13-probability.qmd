@@ -1,0 +1,153 @@
+---
+title: "Probability models"
+subtitle: "Otto & Day, primer 3 and chapter 13, with PracticalCAS"
+engine: julia
+---
+
+Probability distributions are formulas, and their means, variances and
+generating functions are sums or integrals of those formulas: `summation` and
+`integrate` compute them from the definitions. (PracticalProbability.jl knows
+the standard families by name, `Family(:Poisson, λ)`, with their moments and
+generating functions, and does the algebra of events and conditional
+probability.)
+
+```{julia}
+using PracticalCAS
+@syms k::natural n::natural p::(0, 1) λ::positive s x::nonneg
+```
+
+## Discrete distributions
+
+```{julia}
+binom = binomial(n, k) * p^k * (1 - p)^(n - k)
+poisson = exp(-λ) * λ^k / factorial(k)
+geometric = (1 - p)^(k - 1) * p            # trials until the first success, k ≥ 1
+```
+
+Each sums to one; their means and variances:
+
+```{julia}
+moments(f, lo, hi) = (total = summation(f, k, lo, hi),
+                      mean = summation(k * f, k, lo, hi),
+                      variance = simplify(summation(k^2 * f, k, lo, hi) - summation(k * f, k, lo, hi)^2))
+moments(binom, 0, n)
+```
+
+```{julia}
+moments(poisson, 0, ∞)
+```
+
+```{julia}
+moments(geometric, 1, ∞)
+```
+
+```{julia}
+#| include: false
+mb, mp, mg = moments(binom, 0, n), moments(poisson, 0, ∞), moments(geometric, 1, ∞)
+@assert isequiv(mb.total, 1) && isequiv(mb.mean, n * p) && isequiv(mb.variance, n * p * (1 - p))
+@assert isequiv(mp.total, 1) && isequiv(mp.mean, λ) && isequiv(mp.variance, λ)
+@assert isequiv(mg.total, 1) && isequiv(mg.mean, 1 / p) && isequiv(mg.variance, (1 - p) / p^2)
+```
+
+## Generating functions
+
+The probability generating function `G(s) = Σ pₖ sᵏ` packs a distribution
+into one function: `G(1) = 1`, `G'(1)` is the mean. Sums of independent
+counts multiply their generating functions.
+
+```{julia}
+Gb, Gp = pgf(binom, k, s; hi = n), pgf(poisson, k, s)
+```
+
+```{julia}
+pgf_moments(Gp, s)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(Gb, (1 - p + p * s)^n)
+@assert isequiv(Gp, exp(λ * (s - 1)))
+@assert isequiv(pgf_moments(Gb, s).variance, n * p * (1 - p))
+```
+
+## The Poisson limit of the binomial
+
+With many trials and a small success probability `λ/n`, the binomial
+generating function tends to the Poisson one:
+
+```{julia}
+@syms N::positive
+limit((1 - λ / N + λ / N * s)^N, N, ∞)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(limit((1 - λ / N + λ / N * s)^N, N, ∞), exp(λ * (s - 1)))
+```
+
+## Continuous distributions
+
+Waiting times: the exponential distribution with rate `λ`, and the gamma
+distribution (the waiting time for `a` events). Their means, variances and
+moment generating functions are integrals:
+
+```{julia}
+@syms a::positive t
+expo = λ * exp(-λ * x)
+gam = λ^a * x^(a - 1) * exp(-λ * x) / gamma(a)
+cmoments(f) = (total = integrate(f, x, 0, ∞),
+               mean = integrate(x * f, x, 0, ∞),
+               variance = simplify(integrate(x^2 * f, x, 0, ∞) - integrate(x * f, x, 0, ∞)^2))
+cmoments(expo)
+```
+
+```{julia}
+cmoments(gam)
+```
+
+```{julia}
+#| include: false
+me, mγ = cmoments(expo), cmoments(gam)
+@assert isequiv(me.total, 1) && isequiv(me.mean, 1 / λ) && isequiv(me.variance, 1 / λ^2)
+@assert isequiv(mγ.total, 1) && isequiv(mγ.mean, a / λ) && isequiv(mγ.variance, a / λ^2)
+```
+
+The normal distribution:
+
+```{julia}
+@syms z μ σ::positive
+normal = exp(-(z - μ)^2 / (2σ^2)) / sqrt(2 * PracticalCAS.PI * σ^2)
+integrate(normal, z, -∞, ∞), integrate(z * normal, z, -∞, ∞), simplify(integrate((z - μ)^2 * normal, z, -∞, ∞))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(integrate(normal, z, -∞, ∞), 1)
+@assert isequiv(integrate(z * normal, z, -∞, ∞), μ)
+@assert isequiv(simplify(integrate((z - μ)^2 * normal, z, -∞, ∞)), σ^2)
+```
+
+## Example: the probability of escaping infection
+
+If contacts occur as a Poisson process at rate `c`, each transmitting with
+probability `β`, the number of infectious contacts in time `t` is Poisson
+with mean `β c t`, and the probability of escaping infection is the `k = 0`
+term:
+
+```{julia}
+@syms c::positive β::(0, 1) T::positive
+escape = subs(poisson, λ => β * c * T, k => 0)
+```
+
+The waiting time to infection is then exponential with rate `β c`: its
+density is the derivative of `1 - escape`.
+
+```{julia}
+simplify(diff(1 - escape, T))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(escape, exp(-β * c * T))
+@assert isequiv(simplify(diff(1 - escape, T)), β * c * exp(-β * c * T))
+```
