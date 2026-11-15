@@ -57,6 +57,10 @@ include("ecoevo/games.jl")
 include("ecoevo/adaptive.jl")
 include("ecoevo/structured.jl")
 
+# backend-independent plot data; drawing is an optional package extension
+include("plotting/data.jl")
+include("plotting/api.jl")
+
 """
     ∞
 
@@ -93,6 +97,8 @@ export MatrixGame, hawk_dove, payoff, nash, ess, replicator, GameEquilibrium
 export selection_gradient, singular_strategies, classify_singular, SingularStrategy, invades
 export leslie, stable_distribution, reproductive_values, sensitivity, elasticity,
     next_generation, reproduction_number, absorption
+export DynamicsEdge, DynamicsGraph, dynamics_graph, PhaseData, phase_data, ternary_data
+export dynamicsplot, dynamicsplot!, phaseplot, phaseplot!, ternaryplot, ternaryplot!
 
 # compile the integrator while precompiling
 include("calculus/precompile.jl")

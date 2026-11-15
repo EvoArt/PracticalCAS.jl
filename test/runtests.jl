@@ -17,5 +17,6 @@ numeq(a, b, ps...) = isapprox(evalf(toterm(a), ps...), evalf(toterm(b), ps...); 
     include("calculus.jl")
     include("ode.jl")
     include("ecoevo.jl")
+    include("plotting.jl")
     include("examples.jl")
 end

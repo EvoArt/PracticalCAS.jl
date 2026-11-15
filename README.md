@@ -56,6 +56,60 @@ integrate(x*exp(x)*sin(x), x)      # eˣ(x sin x - x cos x + cos x)/2
 integrate(exp(-(x - μ)^2/(2σ^2))/σ, x, -∞, ∞)   # √(2π)
 ```
 
+## Plotting
+
+Load PracticalBayesPlot to enable plotting (the algebra package keeps its single
+LinearAlgebra dependency). If needed, install it with
+`Pkg.add(url="https://github.com/EvoArt/PracticalBayesPlot.jl")`.
+
+```julia
+using PracticalCAS
+import PracticalBayesPlot as PBP
+
+@syms x::positive y::positive a::positive
+model = ode(x => x*(1-y), y => y*(a*x-1))
+dynamicsplot(model; selfloops=false)  # signed influences from the Jacobian
+phaseplot(model; parameters=Dict(a=>1), xlim=(0, 3), ylim=(0, 3),
+          initials=[[0.5, 1.0], [0.25, 1.0]], steps=420, equilibria=:auto)
+
+rps = MatrixGame([0 -1 1; 1 0 -1; -1 1 0];
+                 strategies=["Rock", "Paper", "Scissors"])
+fig = ternaryplot(rps; initials=[[0.2, 0.3, 0.5]], steps=2000, equilibria=:auto)
+PBP.save("rps.svg", fig)  # also .tex (TikZ), .typ (CeTZ), .html
+
+@syms p q s
+frequencies = ode(p=>p*(s-q), q=>q*(p-s), s=>s*(q-p))
+ternaryplot(frequencies; labels=["Rock", "Paper", "Scissors"])
+# Two independent equations also work, with s replaced by 1-p-q.
+```
+
+`dynamicsplot` draws an **influence graph**, not inferred compartment transfers:
+`x → y` means `∂rhs_y/∂x ≠ 0`. Positive influences are blue (`+`), negative
+vermilion (`−`), and undecidable signs grey (`?`); nodes widen to fit long
+names. Use `point=Dict(...)` for local
+signs or `edgelabels=:derivative` for symbolic edge labels. Cycles and
+self-loops are allowed. A derivative that vanishes at `point` is labelled `0`.
+For recurrences, edges describe the next-state map.
+
+`phaseplot` and `ternaryplot` draw phase portraits at fixed numeric parameters.
+Ternary vertices are strategy 1 on the left, 2 on the right, and 3 at the top;
+initial states are triples summing to one. Three-equation inputs must conserve
+total frequency; sampled boundary rates must point inward or along the edges.
+Arrows show direction by default (`normalize=false` shows relative speed).
+Optional trajectories use fixed-step RK4 and stop at the domain boundary;
+check convergence with a smaller `dt`, particularly for fast dynamics. Each
+trajectory gets its own colour, a dot at its start and arrowheads along it.
+`equilibria=:auto` solves for the equilibria in the window and marks them by
+local stability (numerical Jacobian): filled stable, open unstable (saddles
+included), grey neutral (e.g. a centre); a vector of states marks given
+points. These functions do not find bifurcations.
+
+`dynamics_graph`, `phase_data`, and `ternary_data` expose the underlying data
+without a plotting dependency. The `!` plotting forms draw into an existing
+PracticalBayesPlot `Axis` and return those data. Figure-level functions accept
+`figure=(; size=(800, 600))` and `axis=(; title="...")` for customisation.
+See [examples/plotting.jl](examples/plotting.jl) for runnable examples.
+
 ## Status
 
 Version 0.1, under active development. See [ROADMAP.md](ROADMAP.md).

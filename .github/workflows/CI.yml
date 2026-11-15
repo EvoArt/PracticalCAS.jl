@@ -31,3 +31,21 @@ jobs:
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
+  plotting:
+    name: Optional plotting extension
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: '1.10'
+      - uses: julia-actions/cache@v2
+      - name: Test drawing and exports
+        shell: julia --color=yes {0}
+        run: |
+          using Pkg
+          Pkg.activate(mktempdir())
+          Pkg.develop(path=pwd())
+          Pkg.add(url="https://github.com/EvoArt/PracticalBayesPlot.jl")
+          include("test/plotting_backend.jl")

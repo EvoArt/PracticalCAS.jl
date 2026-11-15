@@ -50,6 +50,11 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
       elasticity; next-generation matrix and `reproduction_number`;
       absorption probabilities and times.
 
+- [x] Optional PracticalBayesPlot extension: symbolic influence graphs,
+      two-variable phase portraits, and ternary game/frequency dynamics, with
+      numerical trajectories, equilibria marked by local stability, and SVG,
+      TikZ, and CeTZ output, in the style of PracticalProbability's diagrams.
+
 ## Next, for Otto & Day
 
 - [ ] Worked examples of every chapter as Quarto notebooks (`examples/`), each
@@ -67,7 +72,8 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
 - [ ] `rsolve` for linear recurrences of higher order and non-autonomous terms.
 - [ ] Real forms of complex solutions of linear systems (cos/sin instead of
       complex exponentials); Jordan forms for non-diagonalisable matrices.
-- [ ] Phase-plane and PIP plotting (Makie extension, via PracticalBayesPlot).
+- [ ] PIP plotting, nullcline overlays, and parameter bifurcation diagrams.
+- [ ] Optional Makie rendering of the backend-independent plotting data.
 
 ## Next, general CAS
 
