@@ -46,17 +46,29 @@ packages later, Makie-style: `PracticalCASCore` + umbrella):
 4. `solve/`: `solve` for equations and systems (factor and branch).
 5. `linalg/`: det, inv, rref, nullspace, eigen, charpoly (Faddeev–LeVerrier),
    matpow/matexp, Routh–Hurwitz and Jury (via the bilinear transform).
-6. `calculus/`: limits (classify t → 0⁺ then L'Hôpital), Taylor, apart, and
+6. `calculus/`: limits (classify t → 0⁺ then L'Hôpital), Taylor and `perturb`
+   (`series.jl`), apart, and
    integration: `intpoly.jl` (ℚ(params) field, univariate polynomials,
    subresultants, sparse linear systems), `ratint.jl` (Hermite +
    Lazard–Rioboo–Trager), `risch_norman.jl`, `intrules.jl` (rules), and the
-   driver `integrate.jl`, which verifies every candidate by differentiation.
+   driver `integrate.jl`, which verifies every candidate by differentiation;
+   `sums.jl`: `summation`, `product`, and the gamma/beta/Gaussian definite
+   integrals.
 7. `ode/`: `dsolve` (first order: integrate/linear/Bernoulli/separable; constant
-   coefficient linear; order reduction; boundary values; linear systems) and
-   `rsolve` (linear and Möbius maps; linear systems).
-8. `ecoevo/`: models (`ode`, `recurrence`, `equilibria`, `stability`), games
-   (`ess`, `nash`, `replicator`), adaptive dynamics (`classify_singular`),
-   structured populations, R₀, absorbing Markov chains.
+   coefficient linear with variation of parameters; order reduction; boundary
+   values; linear systems) and `rsolve` (linear and Möbius maps; linear
+   recurrences of any order in an undefined function, with boundary values;
+   linear systems).
+8. `ecoevo/`: models (`ode`, `recurrence`, `equilibria`, `stability`,
+   `quasi_steady_state`), games (`ess`, `nash`, `replicator`), adaptive dynamics
+   (`classify_singular`, structured invasion), structured populations, R₀,
+   absorbing Markov chains; `periodic.jl` (cycles, Hopf, constants of motion),
+   `stochastic.jl` (branching processes, Moran/Wright–Fisher, birth–death
+   chains, diffusions), `simulate.jl` (numerical solutions, cobwebs,
+   bifurcation data).
+9. `plotting/`: backend-independent plot data; drawing is the optional
+   PracticalBayesPlot extension in `ext/`.
+
 
 Code outside `core/` builds terms with operators or the smart constructors
 (`_add`, `_mul`, `_pow`, `_exp`, `_fncall`), never the raw structs, except where a

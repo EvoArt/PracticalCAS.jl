@@ -243,6 +243,18 @@ function _lx(x::Fn)
         return ("\\left|" * latex(x.args[1]) * "\\right|", P_ATOM)
     elseif h === :Integral
         return ("\\int " * latex(x.args[1]) * " \\, d" * latex(x.args[2]), P_MUL)
+    elseif h === :factorial
+        a, p = _lx(x.args[1])
+        return (_lparen(a, p, P_ATOM) * "!", P_POW)
+    elseif h === :gamma
+        return ("\\Gamma\\left(" * latex(x.args[1]) * "\\right)", P_ATOM)
+    elseif h === :binomial
+        return ("\\binom{" * latex(x.args[1]) * "}{" * latex(x.args[2]) * "}", P_ATOM)
+    elseif h in (:Sum, :Product)
+        g, k, a, b = x.args
+        op = h === :Sum ? "\\sum" : "\\prod"
+        body, p = _lx(g)
+        return (op * "_{" * latex(k) * "=" * latex(a) * "}^{" * latex(b) * "} " * _lparen(body, p, P_MUL), P_ADD)
     elseif h === :RootOf
         return ("\\operatorname{Root}_{" * latex(x.args[3]) * "}\\left(" * latex(x.args[1]) * "\\right)", P_ATOM)
     end

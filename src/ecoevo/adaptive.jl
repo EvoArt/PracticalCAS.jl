@@ -80,3 +80,64 @@ The condition for a mutant `m` to invade a resident `r`: `W(m, r) > neutral`
 (use `neutral = 1` for discrete-time growth factors).
 """
 invades(W, m::Sym, r::Sym; neutral = 0) = simplify(Rel(:>, toterm(W), toterm(neutral)))
+
+# ---- invasion with several mutant classes ------------------------------------------
+
+"""
+    invasion_matrix(m, mutants, resident)
+
+The linearised dynamics of rare mutants: the Jacobian of the mutant equations
+with respect to the mutant variables `mutants`, at mutants = 0 and the resident
+variables at the equilibrium `resident` (a dictionary). In discrete time its
+dominant eigenvalue is the mutant's growth factor, in continuous time its
+growth rate.
+"""
+function invasion_matrix(m::DynModel, mutants::AbstractVector, resident::AbstractDict)
+    idx = [findfirst(==(v), m.vars) for v in mutants]
+    any(isnothing, idx) && throw(ArgumentError("invasion_matrix: the mutants must be variables of the model"))
+    d = _pointdict(resident)
+    for v in mutants
+        d[v] = ZERO
+    end
+    J = jacobian(Term[m.rhs[i] for i in idx], Sym[v for v in mutants])
+    return Term[simplify(subs(x, d)) for x in J]
+end
+
+"""
+    invasion_fitness(m, mutants, resident) -> (matrix, eigenvalues, condition)
+
+Invasion analysis with several mutant classes (stage or class structure, or
+several mutant genotypes): the [`invasion_matrix`](@ref), its eigenvalues, and
+the condition under which the mutant invades, i.e. the mutant-free state is
+unstable in the mutant directions (some eigenvalue with positive real part in
+continuous time, outside the unit circle in discrete time).
+"""
+function invasion_fitness(m::DynModel, mutants::AbstractVector, resident::AbstractDict)
+    A = invasion_matrix(m, mutants, resident)
+    vals = something(_safe(_eigvals, A), Term[])
+    stable = _iscont(m) ? routh_hurwitz(A) : jury(A)
+    cond = stable isa Bool ? !stable : simplify(!stable)
+    return (matrix = A, eigenvalues = vals, condition = cond)
+end
+
+"""
+    selection_gradient(A, m, r; λ = 1)
+
+For a class-structured mutant with projection matrix `A(m, r)` (trait `m`,
+resident trait `r`), the derivative of the mutant's growth `∂λ/∂m` at `m = r`
+from the eigenvalue sensitivity `v (∂A/∂m) w / (v w)`, with `w` the stable
+class distribution and `v` the reproductive values of the resident (`λ = 1` in
+discrete time at the resident equilibrium; use `λ = 0` for a continuous-time
+rate matrix).
+"""
+function selection_gradient(A::AbstractMatrix, m::Sym, r::Sym; λ = 1)
+    A = symbolic(A)
+    Ar = Term[simplify(subs(x, m => r)) for x in A]
+    dA = Term[simplify(subs(diff(x, m), m => r)) for x in A]
+    w = right_eigvec(Ar, λ)
+    v = left_eigvec(Ar, λ)
+    n = length(v)
+    num = sum(v[i] * dA[i, j] * w[j] for i in 1:n, j in 1:n)
+    den = sum(v[i] * w[i] for i in 1:n)
+    return simplify(num / den)
+end

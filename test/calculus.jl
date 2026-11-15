@@ -54,3 +54,39 @@
 end
 
 include("integrate.jl")
+
+@testset "sums, products, Euler integrals, perturbation" begin
+    @syms k::natural n::natural p::(0, 1) s x λ::positive a::positive b::positive r::positive ε
+    @test summation(k^2, k, 1, n) ≅ n * (n + 1) * (2n + 1) / 6
+    @test summation(k^3, k, 1, n) ≅ (n * (n + 1) / 2)^2
+    @test summation(x^k, k, 0, n - 1) ≅ (x^n - 1) / (x - 1)
+    @test summation(k * x^k, k, 0, ∞) ≅ x / (1 - x)^2
+    @test summation(k, k, 1, 10) == 55
+    @test summation(exp(-λ) * λ^k / factorial(k), k, 0, ∞) ≅ 1
+    @test summation(k^2 * exp(-λ) * λ^k / factorial(k), k, 0, ∞) ≅ λ + λ^2
+    @test summation(exp(-λ) * λ^k / factorial(k), k, 2, ∞) ≅ 1 - exp(-λ) * (1 + λ)
+    @test summation(k * binomial(n, k) * p^k * (1 - p)^(n - k), k, 0, n) ≅ n * p
+    @test summation(binomial(n, k) * x^k, k, 0, n) ≅ (1 + x)^n
+    @test summation(k * (1 - p)^(k - 1) * p, k, 1, ∞) ≅ 1 / p
+    @test summation(1 / k^2, k, 1, ∞) isa Fn
+    @test isapprox(evalf(summation(1 / k^2, k, 1, ∞)), π^2 / 6; rtol = 1e-5)
+    @test product(k, k, 1, n) == factorial(n)
+    @test product(r, k, 1, n) ≅ r^n
+    @test product((k + 1) / k, k, 1, n) ≅ n + 1
+    @test integrate(x^(a - 1) * exp(-b * x), x, 0, ∞) ≅ gamma(a) / b^a
+    @test integrate(x^(a - 1) * (1 - x)^(b - 1), x, 0, 1) ≅ gamma(a) * gamma(b) / gamma(a + b)
+    @test simplify(gamma(a + 2) / gamma(a)) ≅ a * (a + 1)
+    @test simplify(factorial(n + 1) / factorial(n - 1)) ≅ n * (n + 1)
+    rts = perturb(x^2 - (2 + ε) * x + ε, x, ε; order = 2)
+    @test any(r -> r ≅ ε / 2 - ε^2 / 8, rts) && any(r -> r ≅ 2 + ε / 2 + ε^2 / 8, rts)
+end
+
+@testset "Gaussian integrals" begin
+    @syms z μ σ::positive
+    φ = exp(-(z - μ)^2 / (2σ^2)) / sqrt(2 * PracticalCAS.PI * σ^2)
+    @test integrate(φ, z, -∞, ∞) ≅ 1
+    @test integrate(z * φ, z, -∞, ∞) ≅ μ
+    @test integrate((z - μ)^2 * φ, z, -∞, ∞) ≅ σ^2
+    @test integrate((z - μ)^4 * φ, z, -∞, ∞) ≅ 3σ^4
+    @test integrate(z^2 * φ, z, -∞, ∞) ≅ μ^2 + σ^2
+end

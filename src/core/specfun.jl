@@ -209,3 +209,36 @@ function _nCi(z::Complex)
     end
     return _EULERGAMMA + log(z) + s
 end
+
+# ---- the gamma function -------------------------------------------------------------
+#
+# Lanczos approximation (g = 7, nine coefficients), about 15 digits, with the
+# reflection formula Γ(z)Γ(1 - z) = π/sin(πz) for Re z < 1/2.
+
+const _LANCZOS = (0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7)
+
+function _ngamma(z::Number)
+    z isa Integer && z > 0 && return Float64(factorial(big(z - 1)))
+    z isa Real && isinteger(z) && z <= 0 && return Inf
+    if real(z) < 0.5
+        return π / (sin(π * z) * _ngamma(1 - z))
+    end
+    z -= 1
+    x = _LANCZOS[1]
+    for i in 1:8
+        x += _LANCZOS[i+1] / (z + i)
+    end
+    t = z + 7.5
+    return sqrt(2π) * t^(z + 0.5) * exp(-t) * x
+end
+_nfactorial(x::Number) = x isa Integer && x >= 0 ? Float64(factorial(big(x))) : _ngamma(x + 1)
+function _nbinomial(n::Number, k::Number)
+    if n isa Real && k isa Real && isinteger(n) && isinteger(k)
+        k < 0 && return 0.0
+        (n >= 0 && k > n) && return 0.0
+        return Float64(binomial(big(Int(n)), Int(k)))
+    end
+    return _ngamma(n + 1) / (_ngamma(k + 1) * _ngamma(n - k + 1))
+end

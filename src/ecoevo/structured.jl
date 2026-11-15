@@ -123,3 +123,13 @@ function absorption(P::AbstractMatrix, transient::AbstractVector{<:Integer}, abs
     times = Term[simplify(sum(N[i, :])) for i in 1:k]
     return (probabilities = B, times = times, N = N)
 end
+
+"""
+    euler_lotka(l, m, λ)
+
+The Euler–Lotka equation `Σₓ λ⁻ˣ lₓ mₓ = 1` for survivorship `l` and fecundity
+`m` by age class `x = 1, 2, …`; its positive root is the growth factor of the
+age-structured population (the dominant eigenvalue of the Leslie matrix).
+"""
+euler_lotka(l::AbstractVector, m::AbstractVector, λ) =
+    _add(Term[_mul((toterm(l[x]), toterm(m[x]), _pow(toterm(λ), Num(-x)))) for x in eachindex(l)]) ~ ONE

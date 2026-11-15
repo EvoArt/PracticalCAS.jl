@@ -19,7 +19,7 @@ end
 # 1/α, with the denominator made real when α = a + b i
 function _cinv(α::Term)
     has(α, IM) || return _pow(α, MONE)
-    re, im = reim(α)
+    re, im = _reim(α)
     (re isa Fn && re.head === :re) && return _pow(α, MONE)
     return _mul((_add((re, _mul((MONE, IM, im)))), _pow(_add((_pow(re, TWO), _pow(im, TWO))), MONE)))
 end
@@ -549,12 +549,12 @@ function _exp2trig(t::Term)::Term
     y = _map(_exp2trig, t)
     y isa Fn || return y
     if y.head === :exp && has(y.args[1], IM)
-        re, im = reim(y.args[1])
+        re, im = _reim(y.args[1])
         (re isa Fn && re.head === :re) && return y
         iszero(im) && return y
         return _mul((_exp(re), _add((_cos(im), _mul((IM, _sin(im)))))))
     elseif y.head === :Ei && has(y.args[1], IM)
-        re, im = reim(y.args[1])
+        re, im = _reim(y.args[1])
         (re isa Fn && re.head === :re) && return y
         (iszero(re) && !iszero(im)) || return y
         if _looks_negative(im)

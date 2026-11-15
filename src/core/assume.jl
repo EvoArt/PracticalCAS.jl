@@ -136,6 +136,14 @@ function _signstruct(x::Fn)
         return _isreal_struct(x.args[1]) ? ALLR : ANYS
     elseif h === :Ci
         return _signset(x.args[1]) == POS ? ALLR : ANYS
+    elseif h === :factorial
+        return _nonneg_struct(x.args[1]) ? POS : ANYS
+    elseif h === :gamma
+        return _signset(x.args[1]) == POS ? POS : ANYS
+    elseif h === :binomial
+        n, k = x.args
+        n isa Sym && k isa Sym && n.info.integer && k.info.integer && _nonneg_struct(n) && _nonneg_struct(k) && return POS | ZER
+        return _isreal_struct(n) && _isreal_struct(k) ? ALLR : ANYS
     end
     return ANYS
 end

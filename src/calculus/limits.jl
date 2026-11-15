@@ -90,7 +90,9 @@ end
 function _lvpow(b::Term, e::Term, t::Sym)
     e == ONE && return _lv(b, t)
     if has(e, t)
-        return _lv(_exp(_mul((e, _log(b)))), t)
+        # bᵉ = exp(e log b); classify the exponent directly (building exp(e log b)
+        # would simplify straight back to bᵉ)
+        return _lvexp(_mul((e, _log(b))), t)
     end
     cb = _lv(b, t)
     k = cb[1]
@@ -117,11 +119,29 @@ function _lvpow(b::Term, e::Term, t::Sym)
     return (:unk, ZERO)
 end
 
+# the class of exp(L): from the class of L, or its limit when L is indeterminate
+# (1^∞ forms such as (1 + r/n)ⁿ)
+function _lvexp(L::Term, t::Sym)
+    c = _lv(L, t)
+    if c[1] in (:ind, :unk)
+        v = _lim0(L, t, 5)
+        v === nothing && return (:unk, ZERO)
+        c = v == INF ? (:pinf, ZERO) : v == MINF ? (:minf, ZERO) : _finclass(v)
+    end
+    k = c[1]
+    k === :fin && return _finclass(_exp(c[2]))
+    k in _ZEROS && return (:fin, ONE)
+    k === :pinf && return (:pinf, ZERO)
+    k === :minf && return (:zp, ZERO)
+    return (:unk, ZERO)
+end
+
 function _lvfn(g::Fn, t::Sym)
     length(g.args) == 1 || return (:unk, ZERO)
     isknownfn(g.head) || return (:unk, ZERO)
     c = _lv(g.args[1], t)
     k, v = c
+    g.head === :exp && k in (:ind, :unk) && return _lvexp(g.args[1], t)
     k in (:ind, :unk) && return (:ind, ZERO)
     h = g.head
     if k === :fin
@@ -175,11 +195,14 @@ function _classval(c)
     return nothing
 end
 
+const _LIMBUDGET = Ref(0)
+
 function _lim0(g::Term, t::Sym, depth::Int = 0)
     c = _lv(g, t)
     v = _classval(c)
     v !== nothing && return v
     depth > 8 && return nothing
+    (_LIMBUDGET[] -= 1) < 0 && return nothing
     g2 = _safe(cancel, g)
     if g2 !== nothing && g2 != g
         v = _classval(_lv(g2, t))
@@ -208,8 +231,13 @@ function _lim0(g::Term, t::Sym, depth::Int = 0)
             k in _ZEROS ? push!(zs, f) : k in _INFS ? push!(ws, f) : push!(cs, f)
         end
         if !isempty(zs) && !isempty(ws)
+            # as ∞/∞, then as 0/0
             num = _mul(vcat(cs, ws))
             den = _pow(_mul(zs), MONE)
+            v = _lim0(cancel(diff(num, t) / diff(den, t)), t, depth + 1)
+            v !== nothing && return v
+            num = _mul(vcat(cs, zs))
+            den = _pow(_mul(ws), MONE)
             return _lim0(cancel(diff(num, t) / diff(den, t)), t, depth + 1)
         end
     end
@@ -225,7 +253,9 @@ or `:right`). Returns `∞`/`-∞` for divergence to infinity, and an unevaluate
 `Limit(…)` if it cannot decide (or the one-sided limits differ).
 """
 function limit(f, x::Sym, a; dir::Symbol = :both)
+    _LIMBUDGET[] = 200
     f = toterm(f)
+
     a = toterm(a)
     if a isa Num && a.val isa Float64 && isinf(a.val)
         a = a.val > 0 ? INF : MINF

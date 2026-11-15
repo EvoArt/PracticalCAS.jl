@@ -39,8 +39,12 @@ function _ev(x::Fn)
         return r[Int(_ev(k))]
     end
     h === :Integral && error("N: cannot evaluate an unevaluated integral")
+    h in (:Sum, :Product) && return _evsum(x)
     a = [_ev(y) for y in x.args]
+    h === :binomial && return _nbinomial(a[1], a[2])
     v = a[1]
+    h === :factorial && return _nfactorial(v)
+    h === :gamma && return _ngamma(v)
     h === :exp && return exp(v)
     h === :log && return (v isa Real && v < 0) ? log(Complex(v)) : log(v)
     h === :sin && return sin(v)
@@ -65,6 +69,28 @@ function _ev(x::Fn)
     throw(ArgumentError("N: cannot evaluate the undefined function $h"))
 end
 _ev(x::Deriv) = throw(ArgumentError("N: cannot evaluate the derivative $x"))
+
+# an unevaluated sum or product with numeric bounds, term by term; an infinite
+# sum stops once the terms are negligible
+function _evsum(x::Fn)
+    f, k, a, b = x.args
+    lo, hi = _ev(a), _ev(b)
+    (isfinite(lo) && isinteger(lo)) || throw(ArgumentError("N: the lower bound of $x is not an integer"))
+    issum = x.head === :Sum
+    acc = issum ? 0.0 : 1.0
+    i = Int(lo)
+    small = 0
+    while hi == Inf || i <= hi
+        v = _ev(subs(f, k => i))
+        acc = issum ? acc + v : acc * v
+        if hi == Inf
+            small = abs(v) <= 1e-17 * max(abs(acc), 1e-300) ? small + 1 : 0
+            (small >= 10 || i - lo > 1_000_000) && break
+        end
+        i += 1
+    end
+    return acc
+end
 
 # roots of the polynomial with coefficients cs (constant first), via the
 # companion matrix, sorted by real part then imaginary part
@@ -105,7 +131,8 @@ end
 function _jl(x::Fn, env)
     isknownfn(x.head) && x.head ∉ (:RootOf, :Integral, :re, :im) ||
         throw(ArgumentError("lambdify: cannot compile $(x.head)"))
-    h = x.head in SPECIAL_FUNCTIONS ? Symbol("_n", x.head) : x.head
+    h = x.head in SPECIAL_FUNCTIONS || x.head in (:factorial, :gamma, :binomial) ? Symbol("_n", x.head) : x.head
+    x.head in (:Sum, :Product) && throw(ArgumentError("lambdify: cannot compile the unevaluated $(x.head)"))
     return Expr(:call, h, (_jl(a, env) for a in x.args)...)
 end
 _jl(x::Deriv, env) = throw(ArgumentError("lambdify: cannot compile the derivative $x"))

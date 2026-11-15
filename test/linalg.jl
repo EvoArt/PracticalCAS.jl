@@ -52,3 +52,19 @@
         @test decide(subs(j1, a => -3 // 2)) === false
     end
 end
+
+@testset "matrix functions: defective matrices, real forms" begin
+    @syms t::nonneg n::natural γ::positive
+    E = matexp([-γ 0; γ -γ], t)                      # one eigenvector only
+    @test E[2, 1] ≅ γ * t * exp(-γ * t)
+    @test E[1, 1] ≅ exp(-γ * t)
+    @test matpow([1 1; 0 1], n) == Term[1 n; 0 1]
+    R = matexp([0 1; -1 0], t)
+    @test all(e -> !has(e, PracticalCAS.IM), R)
+    @test R[1, 1] ≅ cos(t) && R[1, 2] ≅ sin(t)
+    P = matpow([0 -1; 1 0], n)
+    @test all(e -> !has(e, PracticalCAS.IM), P)
+    @test all(k -> evalf(subs(P, n => k)) ≈ Float64.([0 -1; 1 0]^k), 0:5)
+    @test realform(exp(im * t) / 2 + exp(-im * t) / 2) ≅ cos(t)
+    @test trig_linearize(2 * sin(t) * cos(t)) ≅ sin(2t)
+end

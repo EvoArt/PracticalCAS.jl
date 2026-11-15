@@ -81,6 +81,14 @@ function _dfn(f::Fn, x::Sym)::Term
         length(f.args) == 2 && f.args[2] == x && return f.args[1]
         throw(ArgumentError("diff: cannot differentiate the unevaluated integral $f"))
     end
+    if h === :Sum
+        g, k, a, b = f.args
+        (has(a, x) || has(b, x)) && throw(ArgumentError("diff: cannot differentiate a sum whose bounds depend on $x"))
+        dg = _d(g, x)
+        return dg == ZERO ? ZERO : Fn(:Sum, Term[dg, k, a, b])
+    end
+    # functions of several arguments: only the first is handled below
+    h in (:binomial, :Product) && throw(ArgumentError("diff: no derivative known for $h"))
     u = f.args[1]
     du = _d(u, x)
     du == ZERO && return ZERO

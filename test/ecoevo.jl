@@ -122,3 +122,46 @@
         @test numeq(res.times[1], 2.0, q => 0.5)
     end
 end
+
+@testset "Otto & Day chapters 4, 10–15 and the appendix" begin
+    @syms n r::positive m s p::(0, 1) a::(0, 1) b::(0, 1) N::positive
+    # ch. 11: cycles and Hopf
+    c2 = only(cycles(recurrence(n => r * n * (1 - n)), 2))
+    @test c2.multiplier[1, 1] ≅ 4 + 2r - r^2
+    @test decide(subs(c2.condition, r => 3.2)) === true
+    @syms X::positive Y::positive A::positive B::positive
+    br = ode(X => A - (B + 1) * X + X^2 * Y, Y => B * X - X^2 * Y)
+    @test only(hopf(br, only(equilibria(br)), B)) ≅ 1 + A^2
+    @syms V::positive P::positive bb::positive d::positive
+    lv = ode(V => r * V - bb * V * P, P => bb * V * P - d * P)
+    @test isconserved(conserved_quantity(lv), lv)
+    # appendix: separation of time scales
+    @syms S::nonneg C::nonneg k₁::positive k₋::positive k₂::positive E₀::positive
+    red = only(quasi_steady_state(ode(S => -k₁ * S * (E₀ - C) + k₋ * C, C => k₁ * S * (E₀ - C) - (k₋ + k₂) * C), C))
+    @test red.rhs[1] ≅ -k₂ * E₀ * S / ((k₋ + k₂) / k₁ + S)
+    # ch. 14–15: stochastic models
+    @test all(stationary_distribution([1-a a; b 1-b]) .≅ [b / (a + b), a / (a + b)])
+    @test assuming(() -> extinction_probability(1 - p + p * s^2, s), p > 1 // 2) ≅ (1 - p) / p
+    @test extinction_probability(1 - p + p * s^2, s) isa Term
+    q = extinction_probability(exp(2 * (s - 1)), s)
+    @test abs(evalf(q) - exp(2 * (evalf(q) - 1))) < 1e-12
+    @syms j::natural i::natural M::natural
+    @test fixation_probability(r * j * (M - j), j * (M - j), j, i, M) ≅ (1 - r^(-i)) / (1 - r^(-M))
+    @test all(absorption(moran(3), [2, 3], [1, 4]).probabilities[:, 2] .≅ [1 // 3, 2 // 3])
+    @test all(sum(wright_fisher(4; s = 1 // 2); dims = 2) .≅ 1)
+    @syms σ::positive
+    @test diffusion_fixation(σ * p * (1 - p), p * (1 - p) / N, p) ≅ (1 - exp(-2N * σ * p)) / (1 - exp(-2N * σ))
+    @test diffusion_time(0, p * (1 - p) / N, p) ≅ -2N * (p * log(p) + (1 - p) * log(1 - p))
+    @test pgf_moments(exp(r * (s - 1)), s).variance ≅ r
+    # ch. 4: numerics
+    sol = simulate(ode(n => n * (1 - n)), 0.1, 5)
+    @test abs(sol.u[end, 1] - 1 / (1 + 9exp(-5))) < 1e-8
+    @test simulate(recurrence(n => 2n), 1, 3).u[:, 1] == [1, 2, 4, 8]
+    @test size(cobweb(recurrence(n => r * n * (1 - n)), 0.2, 4; parameters = Dict(r => 2))) == (9, 2)
+    @test_throws ArgumentError simulate(recurrence(n => r * n), 1, 3)
+    # ch. 10 and 12: structured populations
+    @syms λ f::positive s₁::(0, 1)
+    @test euler_lotka([1, s₁], [f, f], λ).lhs ≅ f / λ + f * s₁ / λ^2
+    @syms mm rr
+    @test selection_gradient([mm / (2rr) mm / (2rr); 1 0], mm, rr) ≅ 2 / (3rr)
+end

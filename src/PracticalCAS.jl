@@ -48,6 +48,7 @@ include("calculus/ratint.jl")
 include("calculus/risch_norman.jl")
 include("calculus/intrules.jl")
 include("calculus/integrate.jl")
+include("calculus/sums.jl")
 
 include("ode/dsolve.jl")
 include("ode/rsolve.jl")
@@ -56,6 +57,9 @@ include("ecoevo/models.jl")
 include("ecoevo/games.jl")
 include("ecoevo/adaptive.jl")
 include("ecoevo/structured.jl")
+include("ecoevo/periodic.jl")
+include("ecoevo/stochastic.jl")
+include("ecoevo/simulate.jl")
 
 # backend-independent plot data; drawing is an optional package extension
 include("plotting/data.jl")
@@ -78,7 +82,8 @@ export assume!, forget!, assuming, eq, neq
 export expand, cancel, together, factor, factor_list, polycoeffs, degree, coeff
 # simplification and reasoning
 export simplify, sign_of, ispositive, isnegative, isnonnegative, isnonpositive,
-    decide, isequiv, logcombine
+    decide, isequiv, logcombine, realform, trig_linearize
+
 # solving
 export solve
 # linear algebra (det, tr, inv, rank, nullspace, eigvals, eigvecs, eigen extend LinearAlgebra)
@@ -86,8 +91,8 @@ export det, tr, rank, nullspace, eigvals, eigvecs, eigen
 export symbolic, rref, linsolve, charpoly, charcoeffs, left_eigvec, right_eigvec,
     matpow, matexp, routh_hurwitz, jury
 # calculus
-export limit, taylor, series, linearize, apart, integrate
-export erf, erfi, Ei, Si, Ci
+export limit, taylor, series, linearize, apart, integrate, perturb
+export erf, erfi, Ei, Si, Ci, gamma, summation, product
 # differential and difference equations
 export dsolve, rsolve
 # ecology and evolution
@@ -96,7 +101,13 @@ export ode, recurrence, ODEModel, MapModel, equilibria, stability, Stability,
 export MatrixGame, hawk_dove, payoff, nash, ess, replicator, GameEquilibrium
 export selection_gradient, singular_strategies, classify_singular, SingularStrategy, invades
 export leslie, stable_distribution, reproductive_values, sensitivity, elasticity,
-    next_generation, reproduction_number, absorption
+    next_generation, reproduction_number, absorption, euler_lotka, invasion_matrix
+export Cycle, cycles, hopf, conserved_quantity, isconserved, quasi_steady_state
+export stationary_distribution, pgf, pgf_moments, extinction_probability,
+    fixation_probability, moran, wright_fisher, diffusion_fixation,
+    diffusion_stationary, diffusion_time
+export simulate, cobweb, bifurcation_data
+
 export DynamicsEdge, DynamicsGraph, dynamics_graph, PhaseData, phase_data, ternary_data
 export dynamicsplot, dynamicsplot!, phaseplot, phaseplot!, ternaryplot, ternaryplot!
 

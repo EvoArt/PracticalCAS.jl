@@ -110,3 +110,24 @@
         @test occursin("e^{", latex(exp(x)))
     end
 end
+
+@testset "factorials, gamma, binomials" begin
+    @syms n::natural k::natural x
+    @test factorial(toterm(5)) == 120
+    @test factorial(n) isa Fn
+    @test binomial(n, 2) ≅ n * (n - 1) / 2
+    @test binomial(toterm(6), toterm(2)) == 15
+    @test binomial(n, -1) == 0
+    @test gamma(toterm(5)) == 24
+    @test gamma(toterm(1 // 2)) ≅ sqrt(PracticalCAS.PI)
+    @test isapprox(evalf(gamma(toterm(0.5))), sqrt(π); rtol = 1e-12)
+    @test isapprox(evalf(gamma(x), x => 3.7), 4.170651783796603; rtol = 1e-12)
+    @test isapprox(evalf(binomial(n, k), n => 10, k => 3), 120.0)
+    @test isapprox(evalf(factorial(x), x => 2.5), 3.323350970447843; rtol = 1e-12)
+    @test latex(factorial(n)) == "n!"
+    @test latex(binomial(n, k)) == raw"\binom{n}{k}"
+    @test ispositive(factorial(n))
+    @test_throws ArgumentError diff(binomial(n, x), x)
+    r, i = reim(toterm(3) + 2im)
+    @test r == 3 && i == 2
+end

@@ -12,7 +12,8 @@ const TermMat = AbstractMatrix{<:Term}
 `A` with every entry converted to a term (so the methods here apply to a
 numeric matrix).
 """
-symbolic(A::AbstractArray) = map(toterm, A)
+symbolic(A::AbstractArray) = Term[toterm(x) for x in A]      # Array{Term}, so entries can become any term
+
 
 _c(x) = cancel(toterm(x))
 _nz(x) = !iszero(_c(x))
@@ -272,9 +273,12 @@ matrix must be diagonalisable.
 """
 function matpow(A::AbstractMatrix, t)
     t isa Integer && return symbolic(A)^t
-    vals, P, Pi = _diagonalise(A)
+    A = symbolic(A)
+    d = _safe(_diagonalise, A)
+    d === nothing && return _realmatrix(_putzer(A, toterm(t), false), A, t)
+    vals, P, Pi = d
     D = Term[i == j ? _pow(vals[i], toterm(t)) : ZERO for i in eachindex(vals), j in eachindex(vals)]
-    return Term[simplify(x) for x in P * D * Pi]
+    return _realmatrix(Term[simplify(x) for x in P * D * Pi], A, t)
 end
 
 """
@@ -283,10 +287,50 @@ end
 The matrix exponential `exp(A t)`, by diagonalisation.
 """
 function matexp(A::AbstractMatrix, t = 1)
-    vals, P, Pi = _diagonalise(A)
+    A = symbolic(A)
+    d = _safe(_diagonalise, A)
+    d === nothing && return _realmatrix(_putzer(A, toterm(t), true), A, t)
+    vals, P, Pi = d
     D = Term[i == j ? _exp(vals[i] * toterm(t)) : ZERO for i in eachindex(vals), j in eachindex(vals)]
-    return Term[simplify(x) for x in P * D * Pi]
+    return _realmatrix(Term[simplify(x) for x in P * D * Pi], A, t)
 end
+
+# Putzer's algorithm, for any matrix whose eigenvalues λ₁…λₙ are known:
+# f(A) = Σₖ rₖ Pₖ₋₁ with P₀ = I, Pₖ = (A - λₖI)Pₖ₋₁ and, for exp(At),
+# r₁ = e^(λ₁t), rₖ(t) = ∫₀ᵗ e^(λₖ(t-s)) rₖ₋₁(s) ds; for Aᵗ, r₁ = λ₁ᵗ,
+# rₖ(t) = Σ_{s<t} λₖ^(t-1-s) rₖ₋₁(s)
+function _putzer(A::AbstractMatrix, t::Term, continuous::Bool)
+    n = size(A, 1)
+    λs = _eigvals(A)
+    length(λs) == n || throw(ArgumentError("matrix function: the eigenvalues could not be found"))
+    τ = Sym(gensym(:τ), SymInfo(true, !continuous, Q(0), false, nothing, false))
+    s = Sym(gensym(:s), SymInfo(true, !continuous, Q(0), false, nothing, false))
+    r = Term[continuous ? _exp(λs[1] * τ) : _pow(λs[1], τ)]
+    for k in 2:n
+        prev = subs(r[k-1], τ => s)
+        rk = continuous ? integrate(_exp(λs[k] * (τ - s)) * prev, s, 0, τ) :
+             summation(_pow(λs[k], τ - 1 - s) * prev, s, 0, τ - 1)
+        (rk isa Fn && rk.head in (:Integral, :Sum)) && throw(ArgumentError("matrix function: Putzer's algorithm failed"))
+        push!(r, simplify(rk))
+    end
+    Pk = Term[i == j ? ONE : ZERO for i in 1:n, j in 1:n]
+    M = Term[ZERO for _ in 1:n, _ in 1:n]
+    for k in 1:n
+        M = M + r[k] * Pk
+        k < n && (Pk = (A - λs[k] * Term[i == j ? ONE : ZERO for i in 1:n, j in 1:n]) * Pk)
+    end
+    return Term[simplify(subs(x, τ => t)) for x in M]
+end
+
+# a real matrix has a real exponential and real powers: rewrite complex
+# exponentials and powers through cos and sin
+function _realmatrix(M, A, t)
+    all(x -> _isreal_struct(x), A) && _isreal_struct(toterm(t)) || return M
+    any(x -> has(x, IM), M) || return M
+    return Term[has(x, IM) ? realform(x) : x for x in M]
+
+end
+
 
 # ---- stability criteria -----------------------------------------------------------
 

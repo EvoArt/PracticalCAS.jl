@@ -6,7 +6,7 @@
 
 const KNOWN_FUNCTIONS = (:exp, :log, :sin, :cos, :tan, :asin, :acos, :atan,
     :sinh, :cosh, :tanh, :abs, :sign, :conj, :re, :im, :RootOf, :Integral,
-    :erf, :erfi, :Ei, :Si, :Ci)
+    :erf, :erfi, :Ei, :Si, :Ci, :factorial, :gamma, :binomial, :Sum, :Product)
 
 # the special functions integration produces
 const SPECIAL_FUNCTIONS = (:erf, :erfi, :Ei, :Si, :Ci)
@@ -84,8 +84,37 @@ function _log(x::Term)::Term
     return Fn(:log, Term[x])
 end
 
+# x = mπ/2 + rest with an integer m ≠ 0 (from a π term of a sum, or a
+# number times π times a sum), or nothing
+function _pi_split(x::Term)
+    k, rest = nothing, x
+    if x isa Add
+        i = findfirst(p -> p.first == PI, x.terms)
+        i === nothing && return nothing
+        k = x.terms[i].second
+        rest = _add(Term[Num(x.c); [_scale(t, c) for (j, (t, c)) in enumerate(x.terms) if j != i]])
+    elseif x isa Mul && length(x.factors) == 2 && x.c isa Q
+        (b1, e1), (b2, e2) = x.factors
+        pf, af = b1 == PI && e1 == ONE ? (b1, b2) : b2 == PI && e2 == ONE ? (b2, b1) : (nothing, nothing)
+        (pf === nothing || !(af isa Add) || (b1 == PI ? e2 : e1) != ONE || !(af.c isa Q) || iszero(af.c)) && return nothing
+        k = x.c * af.c
+        rest = _mul((Num(x.c), PI, _add(Term[_scale(t, c) for (t, c) in af.terms])))
+    end
+    (k isa Q && _isint(2k)) || return nothing
+    m = Int(mod(numerator(2k), 4))
+    return (m, rest)
+end
+
 function _sin(x::Term)::Term
     x == ZERO && return ZERO
+    s = _pi_split(x)
+    if s !== nothing
+        m, r = s
+        m == 0 && return _sin(r)
+        m == 1 && return _cos(r)
+        m == 2 && return _mul((MONE, _sin(r)))
+        return _mul((MONE, _cos(r)))
+    end
     _isfloat(x) && return Num(sin(_fl(x)))
     k = _pi_multiple(x)
     if k !== nothing
@@ -101,6 +130,15 @@ end
 
 function _cos(x::Term)::Term
     x == ZERO && return ONE
+    s = _pi_split(x)
+    if s !== nothing
+        m, r = s
+        m == 0 && return _cos(r)
+        m == 1 && return _mul((MONE, _sin(r)))
+        m == 2 && return _mul((MONE, _cos(r)))
+        return _sin(r)
+    end
+
     _isfloat(x) && return Num(cos(_fl(x)))
     k = _pi_multiple(x)
     if k !== nothing
@@ -168,13 +206,7 @@ function _conj(x::Term)::Term
     return Fn(:conj, Term[x])
 end
 
-"""
-    reim(x) -> (re, im)
-
-Real and imaginary parts of `x`, treating the symbols as having the domains
-they were declared with (real by default). Throws if a part cannot be separated.
-"""
-function reim(x::Term)
+function _reim(x::Term)
     _isreal_struct(x) && return (x, ZERO)
     y = expand(x)
     re, ims = Term[], Term[]
@@ -192,7 +224,21 @@ function reim(x::Term)
     end
     return (_add(re), _add(ims))
 end
-reim(x::Number) = (toterm(real(x)), toterm(imag(x)))
+_reim(x::Number) = (toterm(real(x)), toterm(imag(x)))
+
+const _REIMDOC = """
+    reim(x) -> (re, im)
+
+Real and imaginary parts of the term `x`, treating the symbols as having the
+domains they were declared with (real by default). A part that cannot be
+separated is returned as `re(x)` / `im(x)`.
+"""
+# newer Julia has Base.reim: extend it for terms instead of clashing with it
+@static if isdefined(Base, :reim)
+    import Base: reim
+end
+@doc _REIMDOC reim(x::Term) = _reim(x)
+
 
 _summands(x::Add) = Term[(iszero(x.c) ? Term[] : Term[Num(x.c)]); [_scale(t, k) for (t, k) in x.terms]]
 _summands(x::Term) = Term[x]
@@ -218,6 +264,7 @@ end
 
 # rebuild a function application through its smart constructor
 function _fncall(h::Symbol, args)::Term
+    h === :binomial && length(args) == 2 && return _binomial(args[1], args[2])
     length(args) == 1 || return Fn(h, args)
     x = args[1]
     h === :exp && return _exp(x)
@@ -240,6 +287,8 @@ function _fncall(h::Symbol, args)::Term
     h === :Si && return _simplefn(:Si, _nSi, x; odd = true, zero = ZERO)
     h === :Ei && return _simplefn(:Ei, _nEi, x)
     h === :Ci && return _simplefn(:Ci, _nCi, x)
+    h === :factorial && return _factorial(x)
+    h === :gamma && return _gamma(x)
     h === :abs && return _abs(x)
     h === :sign && return _sign(x)
     h === :conj && return _conj(x)
@@ -297,8 +346,8 @@ Base.sign(x::Term) = _sign(x)
 Base.conj(x::Term) = _conj(x)
 Base.adjoint(x::Term) = _conj(x)
 Base.transpose(x::Term) = x
-Base.real(x::Term) = reim(x)[1]
-Base.imag(x::Term) = reim(x)[2]
+Base.real(x::Term) = _reim(x)[1]
+Base.imag(x::Term) = _reim(x)[2]
 Base.isreal(x::Term) = _isreal_struct(x)
 
 """
@@ -320,3 +369,58 @@ The `k`-th root (in the order of `roots` on the numeric polynomial) of the
 polynomial `p` in `x`, for roots that have no closed form here.
 """
 RootOf(p::Term, x::Sym, k::Integer) = Fn(:RootOf, Term[p, x, Num(k)])
+
+# ---- factorials, the gamma function, binomial coefficients -------------------------
+
+_natural(x::Term) = x isa Num && x.val isa Q && _isint(x.val) && x.val >= 0
+
+function _factorial(x::Term)::Term
+    _natural(x) && return Num(Q(factorial(numerator(x.val))))
+    _isfloat(x) && return Num(_nfactorial(_fl(x)))
+    return Fn(:factorial, Term[x])
+end
+
+# Γ(n) = (n - 1)! at positive integers, Γ(n + 1/2) = (2n)! √π / (4ⁿ n!)
+function _gamma(x::Term)::Term
+    if x isa Num && x.val isa Q
+        v = x.val
+        _isint(v) && v > 0 && return Num(Q(factorial(numerator(v) - 1)))
+        if denominator(v) == 2 && v > 0
+            n = numerator(v - Q(1, 2))
+            return _mul((Num(Q(factorial(2n), 4^n * factorial(n))), _pow(PI, HALF)))
+        end
+    end
+    _isfloat(x) && return Num(_ngamma(_fl(x)))
+    return Fn(:gamma, Term[x])
+end
+
+# binomial(n, k) for a natural number k is the polynomial n(n-1)⋯(n-k+1)/k!,
+# for any n; negative integer k gives 0
+function _binomial(n::Term, k::Term)::Term
+    if k isa Num && k.val isa Q && _isint(k.val)
+        k.val < 0 && return ZERO
+        if n isa Num && n.val isa Q && _isint(n.val)
+            return Num(Q(binomial(numerator(n.val), numerator(k.val))))
+        end
+        kk = Int(numerator(k.val))
+        kk <= 12 && return _mul(Term[Num(Q(1, factorial(big(kk)))); [_add((n, Num(-j))) for j in 0:kk-1]])
+    end
+    (_isfloat(n) || _isfloat(k)) && n isa Num && k isa Num && return Num(_nbinomial(n.val, k.val))
+    return Fn(:binomial, Term[n, k])
+end
+
+Base.factorial(x::Term) = _factorial(x)
+Base.binomial(n::Term, k::Term) = _binomial(n, k)
+Base.binomial(n::Term, k::Integer) = _binomial(n, toterm(k))
+Base.binomial(n::Integer, k::Term) = _binomial(toterm(n), k)
+
+"""
+    gamma(x)
+
+The gamma function `Γ(x) = ∫₀^∞ t^(x-1) e^(-t) dt`, with `Γ(n) = (n-1)!`.
+Exact at positive integers and half-integers, numeric on floats, symbolic
+otherwise. `factorial(x)` (`x!`) and `binomial(n, k)` also accept terms:
+`binomial(n, 2)` is `n(n - 1)/2`.
+"""
+gamma(x::Term) = _gamma(x)
+gamma(x::Number) = _ngamma(x)

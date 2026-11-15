@@ -137,13 +137,13 @@ function _borderline(vals, cont::Bool)
     onb = false
     for λ in vals
         if cont
-            re = _safe(z -> simplify(reim(z)[1]), λ)
+            re = _safe(z -> simplify(_reim(z)[1]), λ)
             re === nothing && return false
             sre = sign_of(re)
             (sre & (POS | CPX)) != 0 && return false
             sre == ZER && (onb = true)
         else
-            re, im_ = reim(λ)
+            re, im_ = _reim(λ)
             m2 = simplify(re^2 + im_^2 - 1)
             sm = sign_of(m2)
             (sm & (POS | CPX)) != 0 && return false
@@ -200,4 +200,33 @@ function invasion_fitness(rhs, x::Sym, point::AbstractDict = Dict{Sym,Term}())
     d = _pointdict(point)
     d[x] = ZERO
     return simplify(subs(diff(toterm(rhs), x), d))
+end
+
+"""
+    quasi_steady_state(m::ODEModel, fast) -> Vector{ODEModel}
+
+Separation of time scales: set the rates of the fast variables `fast` (a symbol
+or a vector) to zero, solve for them, and substitute into the equations of the
+slow variables. Returns one reduced model for each branch of the solution
+(often just one), whose variables are the slow ones.
+
+    @syms S::nonneg C::nonneg k₁::positive k₋::positive k₂::positive E₀::positive
+    # enzyme kinetics: the complex C is fast; dS/dt = -k₂E₀S/(K + S) with K = (k₋ + k₂)/k₁
+    quasi_steady_state(ode(S => -k₁*S*(E₀ - C) + k₋*C, C => k₁*S*(E₀ - C) - (k₋ + k₂)*C), C)
+
+"""
+function quasi_steady_state(m::ODEModel, fast)
+    fast = fast isa Sym ? Sym[fast] : Sym[v for v in fast]
+    idx = [findfirst(==(v), m.vars) for v in fast]
+    any(isnothing, idx) && throw(ArgumentError("quasi_steady_state: the fast variables must be variables of the model"))
+    slow = [i for i in eachindex(m.vars) if !(i in idx)]
+    isempty(slow) && throw(ArgumentError("quasi_steady_state: no slow variables left"))
+    sols = solve(Term[m.rhs[i] for i in idx], fast)
+    out = ODEModel[]
+    for s in sols
+        all(v -> haskey(s, v), fast) || continue
+        d = _pointdict(s)
+        push!(out, ODEModel(Sym[m.vars[i] for i in slow], Term[simplify(subs(m.rhs[i], d)) for i in slow]))
+    end
+    return out
 end

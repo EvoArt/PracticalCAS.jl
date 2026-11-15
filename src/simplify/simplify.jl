@@ -152,11 +152,53 @@ function _simp_inner(x::Term)::Term
         b = simplify(x.base)
         e = simplify(x.exp)
         return _powsimp(b, e)
-    elseif x isa Add || x isa Mul
+    elseif x isa Mul
+        return _gammacombine(_map(_simp_inner, x))
+    elseif x isa Add
         return _map(_simp_inner, x)
     end
     return x
 end
+
+# Γ(u + m) = Γ(u) u (u + 1)⋯(u + m - 1), and u! = Γ(u + 1): gamma and factorial
+# factors of a product whose arguments differ by integers are written over the
+# smallest one, so that ratios such as Γ(a + 1)/Γ(a) = a cancel
+_gammaarg(b::Fn) = b.head === :gamma ? b.args[1] : _add((b.args[1], ONE))
+function _gammacombine(x::Term)::Term
+    x isa Mul || return x
+    gs = [(i, b, e) for (i, (b, e)) in enumerate(x.factors) if b isa Fn && b.head in (:gamma, :factorial)]
+    length(gs) >= 2 || return x
+    used = falses(length(x.factors))
+    out = Term[Num(x.c)]
+    changed = false
+    for (i, bi, _) in gs
+        used[i] && continue
+        ui = _gammaarg(bi)
+        grp = Tuple{Int,Term,Term,Q}[]
+        for (j, bj, ej) in gs
+            used[j] && continue
+            d = _safe(cancel, _gammaarg(bj) - ui)
+            d isa Num && d.val isa Q && _isint(d.val) && abs(d.val) <= 30 && push!(grp, (j, bj, ej, d.val))
+        end
+        length(grp) >= 2 || continue
+        m0 = minimum(g[4] for g in grp)
+        basefn = grp[findfirst(g -> g[4] == m0, grp)][2]
+        base = _gammaarg(basefn)
+        for (j, _, ej, d) in grp
+            used[j] = true
+            m = Int(d - m0)
+            push!(out, _pow(basefn, ej))
+            m > 0 && push!(out, _pow(_mul(Term[_add((base, Num(q))) for q in 0:m-1]), ej))
+        end
+        changed = true
+    end
+    changed || return x
+    for (i, (b, e)) in enumerate(x.factors)
+        used[i] || push!(out, _pow(b, e))
+    end
+    return _mul(out)
+end
+
 
 # function-level rules that need assumptions or factorisation
 function _fnsimp(x::Term)::Term
@@ -396,4 +438,85 @@ function simplify(c::Or)
         end
     end
     return _or(parts)
+end
+
+# ---- real forms -----------------------------------------------------------------------
+
+# exp(u + iv) = eᵘ (cos v + i sin v) and bᵗ = |b|ᵗ (cos θt + i sin θt) for complex b,
+# inside out
+function _cexpand(x::Term)::Term
+    x isa Union{Num,Const,Sym} && return x
+    if x isa Mul
+        # factors are base => exponent pairs: rebuild each as a power so the
+        # rules below see it
+        return _mul(Term[Num(x.c); [(e == ONE ? _cexpand(b) : _cexpand(Pow(b, e))) for (b, e) in x.factors]])
+    end
+    y = _map(_cexpand, x)
+
+    if y isa Fn && y.head === :exp
+        u, v = _reim(y.args[1])
+        (u isa Fn && u.head in (:re, :im)) && return y
+        iszero(v) && return y
+        return _mul((_exp(u), _add((_cos(v), _mul((IM, _sin(v)))))))
+    elseif y isa Pow && !_isreal_struct(y.base) && _isreal_struct(y.exp)
+        u, v = _reim(y.base)
+        (u isa Fn && u.head in (:re, :im)) && return y
+        θ = _argument(simplify(u), simplify(v))
+        θ === nothing && return y
+        ρ = simplify(_add((_pow(u, TWO), _pow(v, TWO))))
+        φ = _mul((θ, y.exp))
+        return _mul((_pow(ρ, _mul((HALF, y.exp))), _add((_cos(φ), _mul((IM, _sin(φ)))))))
+    end
+    return y
+end
+
+# the argument of u + iv (u, v real), when the signs decide the quadrant
+function _argument(u::Term, v::Term)
+    su, sv = sign_of(u), sign_of(v)
+    if su == ZER
+        sv == POS && return _mul((HALF, PI))
+        sv == NEG && return _mul((Num(Q(-1, 2)), PI))
+        return nothing
+    end
+    a = _fncall(:atan, Term[simplify(v / u)])
+    su == POS && return a
+    su == NEG && return _add((a, PI))
+    return nothing
+end
+
+"""
+    realform(x)
+
+For an expression known to be real but written with complex numbers (as the
+solutions of linear models with complex eigenvalues are), the same value with
+`exp(a + ib) = eᵃ(cos b + i sin b)` and complex powers rewritten in polar form,
+and the imaginary parts cancelled: oscillations as `cos` and `sin`. Returns
+`x` unchanged if the real part cannot be separated.
+"""
+function realform(x)
+    x = toterm(x)
+    y = _safe(z -> expand(_cexpand(expand(z))), x)
+    y === nothing && return x
+    re, _ = _reim(y)
+    (re isa Fn && re.head in (:re, :im)) && return x
+    r = simplify(re)
+    return r
+end
+
+"""
+    trig_linearize(x)
+
+Products and powers of `sin` and `cos` rewritten as sums of `sin` and `cos` of
+multiple angles (`2 sin(x) cos(x) = sin(2x)`), through complex exponentials.
+"""
+function trig_linearize(x)
+    x = toterm(x)
+    d = Dict{Term,Term}()
+    for f in _collect_sub!(Term[], y -> y isa Fn && y.head in (:sin, :cos), x)
+        u = f.args[1]
+        e1, e2 = _exp(_mul((IM, u))), _exp(_mul((MONE, IM, u)))
+        d[f] = f.head === :cos ? _mul((HALF, _add((e1, e2)))) : _mul((HALF, _pow(IM, MONE), _add((e1, _mul((MONE, e2))))))
+    end
+    isempty(d) && return x
+    return realform(subs(x, d))
 end

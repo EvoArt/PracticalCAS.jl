@@ -257,6 +257,8 @@ end
 function integrate(f, x::Sym, a, b)
     f, a, b = toterm(f), toterm(a), toterm(b)
     unev = Fn(:Integral, Term[f, x, a, b])
+    r = _euler_integral(f, x, a, b)     # Γ and Β forms with symbolic exponents
+    r === nothing || return r
     F = integrate(f, x)
     F isa Fn && F.head === :Integral && return unev
     _pole_inside(f, x, a, b) && return unev

@@ -61,3 +61,24 @@ D2(f, v) = diff(f(v), v, 2)
     end
 end
 
+
+@testset "higher-order recurrences and forcing" begin
+    @funs y u
+    @syms t::natural i::natural N::natural r::positive c τ::nonneg
+    fib = rsolve(y(t + 2) ~ y(t + 1) + y(t), y(t); ic = [0, 1])
+    @test [round(Int, evalf(subs(fib, t => k))) for k in 0:10] == [0, 1, 1, 2, 3, 5, 8, 13, 21, 34, 55]
+    @test rsolve(y(i + 1) - (1 + r) * y(i) + r * y(i - 1) ~ 0, y(i); bc = [y(0) => 0, y(N) => 1]) ≅ (r^i - 1) / (r^N - 1)
+    @test rsolve(y(i + 1) - 2y(i) + y(i - 1) ~ 0, y(i); bc = [y(0) => 0, y(N) => 1]) ≅ i / N
+    g = rsolve(y(t + 1) ~ r * y(t) + 2^t, y(t); ic = [c])
+    @test subs(g, t => 2) ≅ r * (r * c + 1) + 2
+    @test rsolve(y(t + 1) ~ (t + 1) * y(t), y(t); ic = [1]) == factorial(t)
+    lin = rsolve(y(t + 1) ~ r * y(t) + t, y(t); ic = [c])
+    @test subs(lin, t => 2) ≅ r * (r * c) + 1
+    v = dsolve(diff(u(τ), τ, 2) + u(τ) ~ exp(τ), u(τ))
+    @test simplify(diff(v, τ, 2) + v) ≅ exp(τ)
+    w = dsolve(diff(u(τ), τ, 2) + u(τ) ~ sin(2τ), u(τ); ic = (0, [0, 0]))
+    @test simplify(diff(w, τ, 2) + w) ≅ sin(2τ)
+    @test numeq(w, 2 / 3 * sin(1.0) - sin(2.0) / 3, τ => 1.0)
+    z = dsolve(diff(u(τ), τ, 2) + 3diff(u(τ), τ) + 2u(τ) ~ exp(-τ), u(τ))
+    @test simplify(diff(z, τ, 2) + 3diff(z, τ) + 2z) ≅ exp(-τ)
+end

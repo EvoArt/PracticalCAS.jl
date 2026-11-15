@@ -120,13 +120,14 @@ function dsolve(eq::Eqn, yf::Fn; ic = nothing, bc = nothing)
     if ic !== nothing
         t0, vals = ic
         for (k, v) in enumerate(vals)
-            push!(conds, subs(diff(sol, t, k - 1), t => t0) - toterm(v))
+            push!(conds, _atside(diff(sol, t, k - 1), t, toterm(t0)) - toterm(v))
         end
     end
     if bc !== nothing
         for (lhs, v) in bc
             lhs isa Fn && lhs.head === yf.head || throw(ArgumentError("dsolve: boundary conditions are written $(yf.head)(a) => value"))
-            push!(conds, subs(sol, t => lhs.args[1]) - toterm(v))
+            push!(conds, _atside(sol, t, lhs.args[1]) - toterm(v))
+
         end
     end
     isempty(conds) && return sol
@@ -192,7 +193,7 @@ function _const_coeff(a, g::Term, t::Sym)
     used = falses(length(roots))
     for (i, (z, k)) in enumerate(roots)
         used[i] && continue
-        re, im_ = reim(z)
+        re, im_ = _reim(z)
         if !iszero(im_) && !(re isa Fn)
             # pair with the conjugate: e^(re t) cos(im t), e^(re t) sin(im t)
             j = findfirst(jj -> !used[jj] && jj != i && isequiv(roots[jj][1], re - IM * im_), eachindex(roots))
@@ -215,6 +216,7 @@ function _const_coeff(a, g::Term, t::Sym)
     yh = _add(Term[_mul((c, b)) for (c, b) in zip(consts, basis)])
     iszero(g) && return (yh, consts)
     yp = _particular(a, g, t, roots)
+    yp === nothing && (yp = _varparams(basis, g, t))
     yp === nothing && return (nothing, Sym[])
     return (simplify(yh + yp), consts)
 end
@@ -235,7 +237,29 @@ function _particular(a, g::Term, t::Sym, roots)
     return subs(yp, Dict{Term,Term}(u => get(s, u, ZERO) for u in us))
 end
 
-# ---- linear systems ----------------------------------------------------------------
+# variation of parameters: y_p = Σ uᵢ yᵢ with W u' = (0, …, 0, g), W the Wronskian
+function _varparams(basis, g::Term, t::Sym)
+    n = length(basis)
+    W = Term[diff(b, t, i - 1) for i in 1:n, b in basis]
+    rhs = Term[i == n ? g : ZERO for i in 1:n]
+    up = _safe(M -> linsolve(M, rhs), W)
+    up === nothing && return nothing
+    parts = Term[]
+    for (u, b) in zip(up, basis)
+        U = integrate(simplify(u), t)
+        _hasintegral(U) && return nothing
+        push!(parts, U * b)
+    end
+    yp = simplify(_add(parts))
+    if !isempty(_collect_sub!(Term[], y -> y isa Fn && y.head in (:sin, :cos), yp))
+        lin = _safe(trig_linearize, yp)
+        lin !== nothing && complexity(lin) < complexity(yp) && (yp = lin)
+    end
+    return yp
+
+end
+
+# ---- linear systems ----
 
 function dsolve(F::AbstractVector, ys::AbstractVector, t::Sym; ic = nothing)
     F = Term[toterm(f) for f in F]
