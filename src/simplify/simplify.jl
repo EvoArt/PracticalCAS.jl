@@ -63,14 +63,22 @@ function _sign_add_deep(b::Add)
     return t == 0 ? s : t
 end
 
-"""
+const _SIGNDOC = """
     ispositive(x), isnegative(x), isnonnegative(x), isnonpositive(x), iszero_known(x)
 
 Whether the sign is *provably* positive (etc.) under the assumptions; `false`
 means "not known", not "known false".
 """
-ispositive(x) = sign_of(x) == POS
-isnegative(x) = sign_of(x) == NEG
+# newer Julia has Base.ispositive and Base.isnegative (for real numbers): extend
+# them for terms, so `using PracticalCAS` causes no name clash
+@static if isdefined(Base, :ispositive)
+    import Base: ispositive, isnegative
+    @doc _SIGNDOC ispositive(x::Term) = sign_of(x) == POS
+    isnegative(x::Term) = sign_of(x) == NEG
+else
+    @doc _SIGNDOC ispositive(x) = sign_of(x) == POS
+    isnegative(x) = sign_of(x) == NEG
+end
 isnonnegative(x) = (s = sign_of(x); (s & (NEG | CPX)) == 0)
 isnonpositive(x) = (s = sign_of(x); (s & (POS | CPX)) == 0)
 iszero_known(x) = sign_of(x) == ZER || iszero(cancel(toterm(x)))
