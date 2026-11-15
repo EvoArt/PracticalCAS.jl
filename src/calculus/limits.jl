@@ -144,6 +144,21 @@ function _lvfn(g::Fn, t::Sym)
         return (:fin, k === :pinf ? ONE : MONE)
     elseif h in (:sinh, :cosh) && k in _INFS
         return (h === :cosh || k === :pinf) ? (:pinf, ZERO) : (:minf, ZERO)
+    elseif h in (:erf, :erfi, :Si) && k in _ZEROS
+        return (k, ZERO)
+    elseif h === :erf && k in _INFS
+        return (:fin, k === :pinf ? ONE : MONE)
+    elseif h === :erfi && k in _INFS
+        return (k, ZERO)
+    elseif h === :Si && k in _INFS
+        return (:fin, k === :pinf ? PI / 2 : -PI / 2)
+    elseif h === :Ei
+        k === :pinf && return (:pinf, ZERO)
+        k === :minf && return (:zn, ZERO)
+        k in _ZEROS && return (:minf, ZERO)
+    elseif h === :Ci
+        k === :pinf && return (:z, ZERO)
+        k === :zp && return (:minf, ZERO)
     elseif h === :abs
         k in _ZEROS && return (:zp, ZERO)
         k in _INFS && return (:pinf, ZERO)

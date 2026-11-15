@@ -5,7 +5,11 @@
 # odd/even symmetry) and floats numerically; otherwise it returns an `Fn`.
 
 const KNOWN_FUNCTIONS = (:exp, :log, :sin, :cos, :tan, :asin, :acos, :atan,
-    :sinh, :cosh, :tanh, :abs, :sign, :conj, :re, :im, :RootOf, :Integral)
+    :sinh, :cosh, :tanh, :abs, :sign, :conj, :re, :im, :RootOf, :Integral,
+    :erf, :erfi, :Ei, :Si, :Ci)
+
+# the special functions integration produces
+const SPECIAL_FUNCTIONS = (:erf, :erfi, :Ei, :Si, :Ci)
 
 isknownfn(h::Symbol) = h in KNOWN_FUNCTIONS
 
@@ -120,7 +124,7 @@ end
 
 function _simplefn(h::Symbol, f::Function, x::Term; odd::Bool = false, zero = nothing)::Term
     zero !== nothing && x == ZERO && return zero
-    _isfloat(x) && return Num(f(_fl(x)))
+    _isfloat(x) && return toterm(f(_fl(x)))
     if odd && _looks_negative(x)
         return _mul((MONE, _simplefn(h, f, _mul((MONE, x)); odd = odd, zero = zero)))
     end
@@ -193,6 +197,25 @@ reim(x::Number) = (toterm(real(x)), toterm(imag(x)))
 _summands(x::Add) = Term[(iszero(x.c) ? Term[] : Term[Num(x.c)]); [_scale(t, k) for (t, k) in x.terms]]
 _summands(x::Term) = Term[x]
 
+# asin, acos, atan at the standard values
+function _invtrig_exact(h::Symbol, x::Term)
+    s3, s2 = _pow(Num(3), HALF), _pow(Num(2), HALF)
+    neg = _looks_negative(x)
+    y = neg ? _mul((MONE, x)) : x
+    v = if h === :atan
+        y == ONE ? Q(1, 4) : y == s3 ? Q(1, 3) : y == _mul((Num(Q(1, 3)), s3)) ? Q(1, 6) : nothing
+    else
+        y == ONE ? Q(1, 2) : y == HALF ? Q(1, 6) : y == _mul((HALF, s2)) ? Q(1, 4) :
+        y == _mul((HALF, s3)) ? Q(1, 3) : nothing
+    end
+    v === nothing && return nothing
+    if h === :acos
+        # acos(y) = π/2 - asin(y), acos(-y) = π/2 + asin(y)
+        return _mul((PI, Num(neg ? Q(1, 2) + v : Q(1, 2) - v)))
+    end
+    return _mul((PI, Num(neg ? -v : v)))
+end
+
 # rebuild a function application through its smart constructor
 function _fncall(h::Symbol, args)::Term
     length(args) == 1 || return Fn(h, args)
@@ -202,12 +225,21 @@ function _fncall(h::Symbol, args)::Term
     h === :sin && return _sin(x)
     h === :cos && return _cos(x)
     h === :tan && return _tan(x)
+    if h in (:asin, :acos, :atan)
+        v = _invtrig_exact(h, x)
+        v !== nothing && return v
+    end
     h === :asin && return _simplefn(:asin, asin, x; odd = true, zero = ZERO)
     h === :acos && return _simplefn(:acos, acos, x)
     h === :atan && return _simplefn(:atan, atan, x; odd = true, zero = ZERO)
     h === :sinh && return _simplefn(:sinh, sinh, x; odd = true, zero = ZERO)
     h === :cosh && return _simplefn(:cosh, cosh, x; zero = ONE)
     h === :tanh && return _simplefn(:tanh, tanh, x; odd = true, zero = ZERO)
+    h === :erf && return _simplefn(:erf, _nerf, x; odd = true, zero = ZERO)
+    h === :erfi && return _simplefn(:erfi, _nerfi, x; odd = true, zero = ZERO)
+    h === :Si && return _simplefn(:Si, _nSi, x; odd = true, zero = ZERO)
+    h === :Ei && return _simplefn(:Ei, _nEi, x)
+    h === :Ci && return _simplefn(:Ci, _nCi, x)
     h === :abs && return _abs(x)
     h === :sign && return _sign(x)
     h === :conj && return _conj(x)
@@ -231,6 +263,36 @@ Base.sinh(x::Term) = _fncall(:sinh, Term[x])
 Base.cosh(x::Term) = _fncall(:cosh, Term[x])
 Base.tanh(x::Term) = _fncall(:tanh, Term[x])
 Base.abs(x::Term) = _abs(x)
+
+"""
+    erf(x), erfi(x)
+
+The error function `erf(x) = 2/√π ∫₀ˣ exp(-t²) dt` and the imaginary error
+function `erfi(x) = -i erf(ix) = 2/√π ∫₀ˣ exp(t²) dt`. Symbolic on terms,
+numeric (Float64) on numbers.
+"""
+erf(x::Term) = _fncall(:erf, Term[x])
+erf(x::Number) = _nerf(x)
+erfi(x::Term) = _fncall(:erfi, Term[x])
+erfi(x::Number) = _nerfi(x)
+@doc (@doc erf) erfi
+
+"""
+    Ei(x), Si(x), Ci(x)
+
+The exponential integral `Ei(x) = ∫ exp(t)/t dt` (principal value, from -∞),
+the sine integral `Si(x) = ∫₀ˣ sin(t)/t dt` and the cosine integral
+`Ci(x) = γ + log(x) + ∫₀ˣ (cos(t) - 1)/t dt`. Symbolic on terms, numeric on
+numbers.
+"""
+Ei(x::Term) = _fncall(:Ei, Term[x])
+Ei(x::Number) = _nEi(x)
+Si(x::Term) = _fncall(:Si, Term[x])
+Si(x::Number) = _nSi(x)
+Ci(x::Term) = _fncall(:Ci, Term[x])
+Ci(x::Number) = _nCi(x)
+@doc (@doc Ei) Si
+@doc (@doc Ei) Ci
 Base.sign(x::Term) = _sign(x)
 Base.conj(x::Term) = _conj(x)
 Base.adjoint(x::Term) = _conj(x)

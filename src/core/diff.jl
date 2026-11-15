@@ -106,6 +106,16 @@ function _dfn(f::Fn, x::Sym)::Term
         _fncall(:sinh, Term[u])
     elseif h === :tanh
         _add((ONE, _mul((MONE, _pow(_fncall(:tanh, Term[u]), TWO)))))
+    elseif h === :erf
+        _mul((TWO, _pow(PI, Num(Q(-1) // 2)), _exp(_mul((MONE, _pow(u, TWO))))))
+    elseif h === :erfi
+        _mul((TWO, _pow(PI, Num(Q(-1) // 2)), _exp(_pow(u, TWO))))
+    elseif h === :Ei
+        _mul((_exp(u), _pow(u, MONE)))
+    elseif h === :Si
+        _mul((_sin(u), _pow(u, MONE)))
+    elseif h === :Ci
+        _mul((_cos(u), _pow(u, MONE)))
     elseif h === :abs
         _sign(u)
     elseif h === :sign

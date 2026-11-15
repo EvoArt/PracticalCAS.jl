@@ -12,7 +12,12 @@ theory and adaptive dynamics.
 - `solve` for equations and systems with parameters (equilibria).
 - Symbolic linear algebra: `det`, `inv`, `eigvals`, `eigen`, `charpoly`, `matpow`,
   `matexp`, Routh–Hurwitz and Jury stability conditions.
-- Calculus: `diff`, `limit`, `taylor`, `integrate` (definite and indefinite).
+- Calculus: `diff`, `limit`, `taylor`, and `integrate` (definite and
+  indefinite): complete for rational functions (Hermite, Lazard–Rioboo–Trager,
+  real arctangent forms), a Risch–Norman integrator for exponentials,
+  logarithms and the like, rules for trigonometric and algebraic integrands,
+  `erf`/`Ei`/`Si`/`Ci` for the classic non-elementary ones; every
+  antiderivative is checked by differentiation.
 - `dsolve` (first-order, linear constant-coefficient, boundary values, linear
   systems) and `rsolve` (linear and linear-fractional maps, linear systems).
 - Ecology and evolution: `equilibria` and `stability` of continuous- and
@@ -43,6 +48,12 @@ ess(hawk_dove(V, C))
 # adaptive dynamics
 @syms m x a
 classify_singular(-(m - a)^2 + (x - a)^2, m, x)   # x = a is a CSS
+
+# integration
+@syms x μ σ::positive
+integrate(1/(x^4 + 1), x)          # logarithms and arctangents with √2
+integrate(x*exp(x)*sin(x), x)      # eˣ(x sin x - x cos x + cos x)/2
+integrate(exp(-(x - μ)^2/(2σ^2))/σ, x, -∞, ∞)   # √(2π)
 ```
 
 ## Status

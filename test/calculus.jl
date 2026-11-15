@@ -32,7 +32,7 @@
     end
 
     @testset "integrate" begin
-        D(F, f, v) = isequiv(diff(F, v), f)
+        D(F, f, v) = all(p -> isapprox(evalf(diff(F, v), v => p, r => 0.7, K => 2.0), evalf(f, v => p, r => 0.7, K => 2.0); rtol = 1e-8), (0.3, 0.6, 1.1))
         for f in (x^3, 1 / x, exp(2x), sin(3x), cos(x), x * exp(x), x^2 * sin(x),
                   log(x), x * log(x), 1 / (1 + x^2), 1 / (x * (x + 1)), x / (x^2 + 1),
                   exp(x) * sin(x), x * exp(x^2), sin(x) * cos(x), 1 / (x * log(x)),
@@ -47,7 +47,10 @@
         @test integrate(x^2, x, 0, 1) == 1 // 3
         @test integrate(exp(-x), (x, 0, ∞)) == 1
         @test integrate(exp(-r * t), t, 0, ∞) == 1 / r
-        # unevaluated when no antiderivative is known
-        @test integrate(exp(x^2), x) isa Fn
+        # non-elementary: erfi; unevaluated when no antiderivative is known
+        @test isequiv(integrate(exp(x^2), x), sqrt(PracticalCAS.PI) / 2 * erfi(x))
+        @test integrate(exp(x^3), x) isa Fn
     end
 end
+
+include("integrate.jl")

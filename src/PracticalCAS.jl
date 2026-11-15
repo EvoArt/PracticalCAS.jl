@@ -19,6 +19,7 @@ import LinearAlgebra: det, tr, rank, nullspace, eigvals, eigvecs, eigen
 
 # core: terms, arithmetic, assumptions, printing
 include("core/types.jl")
+include("core/specfun.jl")
 include("core/arith.jl")
 include("core/functions.jl")
 include("core/syms.jl")
@@ -42,6 +43,10 @@ include("linalg/linalg.jl")
 include("calculus/limits.jl")
 include("calculus/series.jl")
 include("calculus/apart.jl")
+include("calculus/intpoly.jl")
+include("calculus/ratint.jl")
+include("calculus/risch_norman.jl")
+include("calculus/intrules.jl")
 include("calculus/integrate.jl")
 
 include("ode/dsolve.jl")
@@ -78,6 +83,7 @@ export symbolic, rref, linsolve, charpoly, charcoeffs, left_eigvec, right_eigvec
     matpow, matexp, routh_hurwitz, jury
 # calculus
 export limit, taylor, series, linearize, apart, integrate
+export erf, erfi, Ei, Si, Ci
 # differential and difference equations
 export dsolve, rsolve
 # ecology and evolution
@@ -87,5 +93,8 @@ export MatrixGame, hawk_dove, payoff, nash, ess, replicator, GameEquilibrium
 export selection_gradient, singular_strategies, classify_singular, SingularStrategy, invades
 export leslie, stable_distribution, reproductive_values, sensitivity, elasticity,
     next_generation, reproduction_number, absorption
+
+# compile the integrator while precompiling
+include("calculus/precompile.jl")
 
 end

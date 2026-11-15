@@ -21,6 +21,10 @@ even a test suite counts). Test through either:
   `julia --project -e 'using Pkg; Pkg.test()'` in an `sbatch` job. Use a private
   directory (`~/pcas`); `~/pprob` belongs to PracticalProbability sessions.
 
+Precompilation runs an integration workload (`src/calculus/precompile.jl`,
+about 100 s); export `PRACTICALCAS_FAST_PRECOMPILE=1` in test jobs while
+iterating to skip it.
+
 ## Layout and layering
 
 `src/` is one module with directories in dependency order; a layer may use only
@@ -42,7 +46,11 @@ packages later, Makie-style: `PracticalCASCore` + umbrella):
 4. `solve/`: `solve` for equations and systems (factor and branch).
 5. `linalg/`: det, inv, rref, nullspace, eigen, charpoly (Faddeev–LeVerrier),
    matpow/matexp, Routh–Hurwitz and Jury (via the bilinear transform).
-6. `calculus/`: limits (classify t → 0⁺ then L'Hôpital), Taylor, apart, integrate.
+6. `calculus/`: limits (classify t → 0⁺ then L'Hôpital), Taylor, apart, and
+   integration: `intpoly.jl` (ℚ(params) field, univariate polynomials,
+   subresultants, sparse linear systems), `ratint.jl` (Hermite +
+   Lazard–Rioboo–Trager), `risch_norman.jl`, `intrules.jl` (rules), and the
+   driver `integrate.jl`, which verifies every candidate by differentiation.
 7. `ode/`: `dsolve` (first order: integrate/linear/Bernoulli/separable; constant
    coefficient linear; order reduction; boundary values; linear systems) and
    `rsolve` (linear and Möbius maps; linear systems).

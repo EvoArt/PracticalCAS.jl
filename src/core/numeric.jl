@@ -52,6 +52,11 @@ function _ev(x::Fn)
     h === :sinh && return sinh(v)
     h === :cosh && return cosh(v)
     h === :tanh && return tanh(v)
+    h === :erf && return _nerf(v)
+    h === :erfi && return _nerfi(v)
+    h === :Ei && return _nEi(v)
+    h === :Si && return _nSi(v)
+    h === :Ci && return _nCi(v)
     h === :abs && return abs(v)
     h === :sign && return sign(v)
     h === :conj && return conj(v)
@@ -100,7 +105,8 @@ end
 function _jl(x::Fn, env)
     isknownfn(x.head) && x.head ∉ (:RootOf, :Integral, :re, :im) ||
         throw(ArgumentError("lambdify: cannot compile $(x.head)"))
-    return Expr(:call, x.head, (_jl(a, env) for a in x.args)...)
+    h = x.head in SPECIAL_FUNCTIONS ? Symbol("_n", x.head) : x.head
+    return Expr(:call, h, (_jl(a, env) for a in x.args)...)
 end
 _jl(x::Deriv, env) = throw(ArgumentError("lambdify: cannot compile the derivative $x"))
 

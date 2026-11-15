@@ -26,8 +26,18 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
       eigenvalues and eigenvectors, left eigenvectors, matpow, matexp,
       Routh–Hurwitz and Jury conditions.
 - [x] Calculus: diff (with undefined functions), limit, Taylor (one and several
-      variables), linearize, apart, integrate (table, rational functions,
-      substitution, parts), definite integrals with infinite bounds.
+      variables), linearize, apart.
+- [x] `integrate`: rational functions completely (Hermite reduction,
+      Lazard–Rioboo–Trager, Rioboo's real arctangents, real factors of
+      biquadratics and binomial cubics, `RootOf` sums otherwise); the
+      Risch–Norman parallel integrator (exp, log, tan, powers, inverse trig,
+      special functions as kernels); rules: table, parts, derivative-divides
+      with inversion, Bioche's substitutions and Fourier linearisation for
+      trigonometric integrands, rationalising substitutions for radicals of
+      linear polynomials, √quadratic reduction and Euler substitutions;
+      `erf`, `erfi`, `Ei`, `Si`, `Ci` (with numerics); every result verified by
+      differentiation at sample points; definite integrals with infinite
+      bounds, poles inside the interval detected, jumps of tan accounted for.
 - [x] `dsolve`: first order (integrate, linear, Bernoulli, separable) with
       initial values; linear constant coefficient of any order with polynomial
       forcing; reduction of order when y is missing; boundary values; linear
@@ -63,7 +73,11 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
 
 - [ ] Full univariate factorisation over ℤ (Zassenhaus) and multivariate (Wang).
 - [ ] Gröbner bases for polynomial systems; `RootOf` arithmetic.
-- [ ] Risch integration for elementary functions; integrals of quadratic powers.
+- [ ] Integration, beyond the current heuristic completeness: the full Risch
+      decision procedure for transcendental towers (proving non-integrability),
+      algebraic functions beyond √quadratic (Trager), real forms of `RootOf`
+      sums of higher degree, polylogarithms, Fresnel integrals, incomplete
+      gamma; hyperbolic forms of results; precompiled workloads for latency.
 - [ ] Gruntz algorithm for limits.
 - [ ] Symbolic sums and products (Gosper), recurrence solving (Petkovšek).
 - [ ] Piecewise functions and conditions in results (`x^(n+1)/(n+1)` for

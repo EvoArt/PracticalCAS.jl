@@ -231,7 +231,9 @@ _lx(x::Const) = (x.name === :I ? "i" : x.name === :π ? "\\pi" : "\\infty", P_AT
 _lx(x::Sym) = (_latexname(x.name), P_ATOM)
 const _FNTEX = Dict(:log => "\\log", :sin => "\\sin", :cos => "\\cos", :tan => "\\tan",
     :asin => "\\arcsin", :acos => "\\arccos", :atan => "\\arctan", :sinh => "\\sinh",
-    :cosh => "\\cosh", :tanh => "\\tanh", :sign => "\\operatorname{sign}")
+    :cosh => "\\cosh", :tanh => "\\tanh", :sign => "\\operatorname{sign}",
+    :erf => "\\operatorname{erf}", :erfi => "\\operatorname{erfi}", :Ei => "\\operatorname{Ei}",
+    :Si => "\\operatorname{Si}", :Ci => "\\operatorname{Ci}")
 function _lx(x::Fn)
     h = x.head
     if h === :exp

@@ -132,6 +132,10 @@ function _signstruct(x::Fn)
         return r
     elseif h === :cosh
         return _isreal_struct(x.args[1]) ? POS : ANYS
+    elseif h in (:erf, :erfi, :Si, :Ei)
+        return _isreal_struct(x.args[1]) ? ALLR : ANYS
+    elseif h === :Ci
+        return _signset(x.args[1]) == POS ? ALLR : ANYS
     end
     return ANYS
 end

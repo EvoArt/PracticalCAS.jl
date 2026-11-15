@@ -1,12 +1,37 @@
-# Integration.
+# Integration: the driver.
 #
-# A heuristic integrator, in the order: linearity and constant factors; a table
-# of elementary antiderivatives with linear inner arguments; rational functions
-# by partial fractions (logs and arctangents); integration by parts for
-# polynomial times exp/sin/cos/log/inverse trig, and exp times sin/cos;
-# substitution where the integrand is f(u(x)) u'(x) up to a constant; finally
-# expanding the
-# integrand and trying again. A full Risch integrator is on the roadmap.
+# `integrate` tries a sequence of methods on the integrand, from cheap special
+# cases to complete algorithms:
+#
+#   polynomials, constant factors, a table of elementary functions of linear
+#   arguments; rational functions (Hermite reduction and Lazard–Rioboo–Trager,
+#   complete, ratint.jl); linearity; integration by parts; erf and Ei forms;
+#   substitution (derivative divides, with inversion); rationalising
+#   substitutions for radicals of linear polynomials; square roots of
+#   quadratics (reduction to ∫dx/√Q) and Euler's substitutions; trigonometric
+#   integrands by Bioche's rules and by linearisation through complex
+#   exponentials; the Risch–Norman parallel integrator (risch_norman.jl); and
+#   finally the expanded and cancelled forms of the integrand.
+#
+# Every candidate antiderivative is checked by differentiating it and comparing
+# with the integrand at several numeric points that satisfy the assumptions, so
+# a heuristic can fail to find an antiderivative but never return a wrong one.
+
+const _INTDEBUG = Ref(false)
+
+mutable struct _IntCtx
+    cache::Dict{Tuple{Term,Sym},Union{Term,Nothing}}
+    active::Vector{Tuple{Term,Sym}}
+    budget::Int
+end
+_IntCtx() = _IntCtx(Dict{Tuple{Term,Sym},Union{Term,Nothing}}(), Tuple{Term,Sym}[], 600)
+
+const _METHODS = (
+    (:poly, _im_poly), (:const, _im_const), (:table, _im_table), (:ratint, _im_ratint),
+    (:sum, _im_sum), (:parts, _im_parts), (:expquad, _im_expquad), (:expei, _im_expei),
+    (:risch_norman_notrig, _im_risch_notrig), (:bioche_odd, _im_bioche_odd), (:fourier, _im_fourier),
+    (:subst, _im_subst), (:radlin, _im_radlin), (:sqrtquad, _im_sqrtquad), (:bioche, _im_bioche),
+    (:risch_norman, (c, f, x) -> _risch_norman(f, x)), (:euler, _im_euler), (:rewrite, _im_rewrite))
 
 """
     integrate(f, x)
@@ -18,294 +43,299 @@ definite integral from `a` to `b` (which may be `∞`/`-∞`), computed from the
 antiderivative as a difference of one-sided limits. If no antiderivative is
 found the result is the unevaluated `∫(f, x)`.
 
-The definite integral assumes the antiderivative is continuous on the
-interval: an integrand singular inside `(a, b)` is not detected.
+Rational functions are integrated completely (logarithms and arctangents, or
+sums over the roots of an irreducible polynomial as `RootOf`); elementary
+integrands by rules and the Risch–Norman heuristic; some non-elementary ones in
+terms of `erf`, `erfi`, `Ei`, `Si` and `Ci`. Every antiderivative returned has
+been checked by differentiation.
+
+For a definite integral, poles of a rational integrand inside the interval
+make the result unevaluated, and the jumps of `tan` in an antiderivative are
+accounted for when the bounds are numbers.
 """
 function integrate(f, x::Sym)
     f = toterm(f)
-    F = _int(f, x, 0)
+    F = _integrate(f, x)
     F === nothing && return Fn(:Integral, Term[f, x])
-    return simplify(F)
+    return F
 end
 integrate(f, r::Tuple) = integrate(f, r...)
-function integrate(f, x::Sym, a, b)
-    F = integrate(f, x)
-    F isa Fn && F.head === :Integral && return Fn(:Integral, Term[toterm(f), x, toterm(a), toterm(b)])
-    hi = limit(F, x, b; dir = :left)
-    lo = limit(F, x, a; dir = :right)
-    ((hi isa Fn && hi.head === :Limit) || (lo isa Fn && lo.head === :Limit)) &&
-        return Fn(:Integral, Term[toterm(f), x, toterm(a), toterm(b)])
-    if (hi == INF && lo == INF) || (hi == MINF && lo == MINF)
-        return Fn(:Integral, Term[toterm(f), x, toterm(a), toterm(b)])
+
+function _integrate(f::Term, x::Sym)
+    fl = _hasfloat(f)
+    g = fl ? _rationalize(f) : f
+    g === nothing && return nothing
+    ctx = _IntCtx()
+    F = _irec(ctx, g, x)
+    F === nothing && return nothing
+    F = _dropconst(_postint(F), x)
+    S = _safe(simplify, F)
+    if S !== nothing && S != F && complexity(S) <= complexity(F) && _verify(S, g, x)
+        F = S
     end
-    return simplify(hi - lo)
+    return fl ? _floatify(F) : F
 end
 
-# linear in x: (α, β) with u = αx + β, α ≠ 0
-function _linear(u::Term, x::Sym)
-    cs = polycoeffs(u, x)
-    (cs === nothing || length(cs) != 2 || iszero(cs[2]) || has(cs[2], x)) && return nothing
-    return (cs[2], cs[1])
-end
-
-function _int(f::Term, x::Sym, depth::Int)
-    depth > 6 && return nothing
+function _irec(ctx::_IntCtx, f::Term, x::Sym)
     has(f, x) || return _mul((f, x))
-    f == x && return _mul((HALF, _pow(x, TWO)))
-    if f isa Add
-        parts = Term[]
-        ok = true
-        for s in _summands(f)
-            F = _int(s, x, depth)
-            if F === nothing
-                ok = false
-                break
-            end
-            push!(parts, F)
-        end
-        ok && return _add(parts)
+    key = (f, x)
+    haskey(ctx.cache, key) && return ctx.cache[key]
+    key in ctx.active && return nothing
+    (length(ctx.active) > 12 || ctx.budget <= 0) && return nothing
+    ctx.budget -= 1
+    push!(ctx.active, key)
+    F = try
+        _imethods(ctx, f, x)
+    finally
+        pop!(ctx.active)
     end
-    if f isa Mul
-        cs = Term[Num(f.c)]
-        rest = Pair{Term,Term}[]
-        for p in f.factors
-            (has(p.first, x) || has(p.second, x)) ? push!(rest, p) : push!(cs, _powraw(p))
+    ctx.cache[key] = F
+    return F
+end
+
+function _imethods(ctx::_IntCtx, f::Term, x::Sym)
+    for (name, m) in _METHODS
+        F = try
+            m(ctx, f, x)
+        catch err
+            err isa InterruptException && rethrow()
+            _INTDEBUG[] && @warn "integrate: $name failed on $f" exception = err
+            nothing
         end
-        if length(cs) > 1 || !isone(f.c)
-            r = _from_factors(rest)
-            F = _int(r, x, depth)
-            F !== nothing && return _mul(vcat(cs, Term[F]))
-            return nothing
+        F === nothing && continue
+        # a real integrand gets an answer without i
+        if has(F, IM) && !has(f, IM)
+            _INTDEBUG[] && @warn "integrate: $name gave a complex form" f F
+            continue
         end
-    end
-    F = _int_table(f, x)
-    F !== nothing && return F
-    F = _int_rational(f, x, depth)
-    F !== nothing && return F
-    F = _int_parts(f, x, depth)
-    F !== nothing && return F
-    F = _int_subst(f, x, depth)
-    F !== nothing && return F
-    g = _safe(expand, f)
-    if g !== nothing && g != f && g isa Add
-        F = _int(g, x, depth + 1)
-        F !== nothing && return F
-    end
-    g = _safe(cancel, f)
-    if g !== nothing && g != f
-        F = _int(g, x, depth + 1)
-        F !== nothing && return F
+        if _verify(F, f, x)
+            _INTDEBUG[] && @info "integrate: $name: ∫ $f = $F"
+            return F
+        end
+        _INTDEBUG[] && @warn "integrate: $name gave a wrong antiderivative" f F
     end
     return nothing
 end
 
-function _int_table(f::Term, x::Sym)
-    if f isa Pow
-        b, e = f.base, f.exp
-        if !has(e, x)
-            l = _linear(b, x)
-            l === nothing && return nothing
-            α = l[1]
-            e == MONE && return _mul((_log(b), _pow(α, MONE)))
-            e1 = _add((e, ONE))
-            return _mul((_pow(b, e1), _pow(_mul((e1, α)), MONE)))
-        elseif !has(b, x)
-            l = _linear(e, x)
-            l === nothing && return nothing
-            return _mul((f, _pow(_mul((l[1], _log(b))), MONE)))
-        end
+# ---- verification ----------------------------------------------------------------
+
+const _VPTS = (0.6180339887, 1.3247179572, 0.4142135624, 1.7320508076, 0.8660254038,
+    2.2360679775, 0.3183098862, 1.1892071150, 0.5772156649, 1.4655712319, 0.7548776662,
+    1.0986122887, 0.2679491924, 1.9318516526)
+
+function _sample(s::Sym, j::Int, k::Int)
+    i = s.info
+    v = _VPTS[mod(3j + 5k, length(_VPTS))+1] * (1 + 0.137 * mod(j, 5))
+    if i.integer
+        lo = i.lo === nothing ? 1 : ceil(Int, Float64(i.lo))
+        return Num(lo + 1 + mod(j + k, 3))
+    end
+    i.real || return toterm(complex(v, 0.37 * v))
+    lo, hi = i.lo, i.hi
+    if lo !== nothing && hi !== nothing
+        return Num(Float64(lo) + v / (v + 1) * Float64(hi - lo))
+    elseif lo !== nothing
+        return Num(Float64(lo) + v)
+    elseif hi !== nothing
+        return Num(Float64(hi) - v)
+    end
+    # unbounded real symbols take both signs
+    return Num(isodd(k) ? -v : v)
+end
+
+function _facts_ok(d)
+    for (g, mask) in FACTS
+        all(s -> haskey(d, s), free_symbols(g)) || continue
+        v = _numval(g, d)
+        v === nothing && continue
+        v = real(v)
+        bit = v < 0 ? NEG : (v == 0 ? ZER : POS)
+        (bit & mask) == 0 && return false
+    end
+    return true
+end
+
+function _numval(t::Term, d)
+    try
+        v = _ev(subs(t, d))
+        return v isa Number ? v : nothing
+    catch err
+        err isa InterruptException && rethrow()
         return nothing
     end
-    f isa Fn && length(f.args) == 1 || return nothing
-    u = f.args[1]
-    l = _linear(u, x)
-    l === nothing && return nothing
-    ia = _pow(l[1], MONE)
-    h = f.head
-    r = if h === :exp
-        f
-    elseif h === :sin
-        -_cos(u)
-    elseif h === :cos
-        _sin(u)
-    elseif h === :tan
-        -_log(_cos(u))
-    elseif h === :log
-        u * _log(u) - u
-    elseif h === :sinh
-        _fncall(:cosh, Term[u])
-    elseif h === :cosh
-        _fncall(:sinh, Term[u])
-    elseif h === :tanh
-        _log(_fncall(:cosh, Term[u]))
-    elseif h === :atan
-        u * f - _log(1 + u^2) / 2
-    elseif h === :asin
-        u * f + sqrt(1 - u^2)
-    elseif h === :acos
-        u * f - sqrt(1 - u^2)
-    else
-        nothing
-    end
-    r === nothing && return nothing
-    return _mul((r, ia))
 end
 
-function _isrational_in(f::Term, x::Sym)
-    gens = _collect_gens!(Gens(), _inner(cancel, f)).list
-    return all(g -> g == x || !has(g, x), gens)
+_hasintegral(F::Term) = !isempty(_collect_sub!(Term[], y -> y isa Fn && y.head in (:Integral, :Limit, :re, :im), F))
+
+"""
+    _verify(F, f, x) -> Bool
+
+Whether d/dx F equals f at several numeric points (respecting the symbols'
+assumptions and the facts).
+"""
+function _verify(F::Term, f::Term, x::Sym)
+    _hasintegral(F) && return false
+    dF = _safe(y -> diff(y, x), F)
+    dF === nothing && return false
+    syms = union(free_symbols(F), free_symbols(f))
+    x in syms || push!(syms, x)
+    # the variable of a RootOf is bound
+    for r in _collect_sub!(Term[], y -> y isa Fn && y.head === :RootOf, F)
+        filter!(s -> s != r.args[2], syms)
+    end
+    good = 0
+    for k in 1:14
+        d = Dict{Term,Term}(s => _sample(s, j, k) for (j, s) in enumerate(syms))
+        _facts_ok(d) || continue
+        a = _numval(dF, d)
+        b = _numval(f, d)
+        (a === nothing || b === nothing) && continue
+        (isfinite(a) && isfinite(b)) || continue
+        abs(a - b) <= 1e-7 * max(abs(a), abs(b)) + 1e-10 || return false
+        good += 1
+        good >= 3 && return true
+    end
+    return good >= 2
 end
 
-function _int_rational(f::Term, x::Sym, depth::Int)
-    _isrational_in(f, x) || return nothing
-    f = cancel(f)
-    den = denominator(f)
-    if !has(den, x)
-        cs = polycoeffs(f, x)
-        cs === nothing && return nothing
-        return _add(Term[_mul((c, _pow(x, Num(k)), Num(Q(1) // k))) for (k, c) in enumerate(cs)])
+# ---- floats, tidying -------------------------------------------------------------
+
+_ratv(v::Q) = v
+_ratv(v::Float64) = isfinite(v) ? Q(rationalize(BigInt, v)) : throw(ArgumentError("integrate: non-finite number"))
+function _rationalize(x::Term)::Term
+    x isa Num && return Num(_ratv(x.val))
+    x isa Add && return _add(Term[Num(_ratv(x.c)); [_mul((Num(_ratv(k)), _rationalize(t))) for (t, k) in x.terms]])
+    x isa Mul && return _mul(Term[Num(_ratv(x.c)); [_pow(_rationalize(b), _rationalize(e)) for (b, e) in x.factors]])
+    x isa Pow && return _pow(_rationalize(x.base), _rationalize(x.exp))
+    x isa Fn && return _fncall(x.head, Term[_rationalize(a) for a in x.args])
+    return x
+end
+_fv(v) = v isa Q && !_isint(v) ? Float64(v) : v
+function _floatify(x::Term)::Term
+    x isa Num && return Num(_fv(x.val))
+    x isa Add && return _add(Term[Num(_fv(x.c)); [_mul((Num(_fv(k)), _floatify(t))) for (t, k) in x.terms]])
+    x isa Mul && return _mul(Term[Num(_fv(x.c)); [_pow(_floatify(b), e) for (b, e) in x.factors]])
+    x isa Pow && return _pow(_floatify(x.base), x.exp)
+    x isa Fn && return _fncall(x.head, Term[_floatify(a) for a in x.args])
+    return x
+end
+
+# without its x-free summands (constants of integration)
+function _dropconst(F::Term, x::Sym)
+    G = F isa Add ? F : (complexity(F) < 150 ? _safe(expand, F) : nothing)
+    (G isa Add && any(s -> !has(s, x), _summands(G))) || return F
+    H = _add(Term[s for s in _summands(G) if has(s, x)])
+    return F isa Add ? H : (complexity(H) <= complexity(F) + 4 ? H : F)
+end
+
+# atan(tan(u)) = u and log(-u) for log(u) with u ≤ 0, each up to a constant
+function _postint(F::Term)::Term
+    F isa Union{Num,Const,Sym} && return F
+    y = _map(_postint, F)
+    if y isa Fn && y.head === :atan && y.args[1] isa Fn && y.args[1].head === :tan
+        return y.args[1].args[1]
     end
-    p = _safe(y -> apart(y, x), f)
-    p === nothing && return nothing
-    if p isa Add && length(_summands(p)) > 1
-        parts = Term[]
-        for s in _summands(p)
-            F = _int_simplefrac(s, x)
-            F === nothing && (F = _int(s, x, depth + 1))
-            F === nothing && return nothing
-            push!(parts, F)
+    if y isa Fn && y.head === :log
+        a = y.args[1]
+        s = sign_of(a)
+        if (s & (POS | CPX)) == 0 && s != ZER
+            return _log(cancel(-a))
         end
-        return _add(parts)
-    end
-    return _int_simplefrac(p, x)
-end
-
-# one partial fraction: polynomial, A/(αx+β)^k or (Bx + C)/(ax² + bx + c)
-function _int_simplefrac(s::Term, x::Sym)
-    n, d = numerator(s), denominator(s)
-    has(d, x) || return _int_rational_poly(s, x)
-    c, fs = factor_list(d)
-    xf = [(g, k) for (g, k) in fs if has(g, x)]
-    length(xf) == 1 || return nothing
-    g, k = xf[1]
-    scal = _mul(Term[c; [_pow(h, Num(j)) for (h, j) in fs if !has(h, x)]])
-    nc = polycoeffs(n, x)
-    gc = polycoeffs(g, x)
-    (nc === nothing || gc === nothing) && return nothing
-    if length(gc) == 2
-        # A/(αx+β)^k with A possibly linear-free: integrate the polynomial numerator over a power
-        length(nc) == 1 || return nothing
-        return _mul((nc[1], _pow(scal, MONE), _int_table(_pow(g, Num(-k)), x)))
-    elseif length(gc) == 3 && k == 1 && length(nc) <= 2
-        C = nc[1]
-        B = length(nc) == 2 ? nc[2] : ZERO
-        cc, b, a = gc
-        disc = simplify(4 * a * cc - b^2)
-        sq = simplify(sqrt(disc))
-        part1 = iszero(B) ? ZERO : B / (2a) * _log(g)
-        k2 = simplify(C - B * b / (2a))
-        part2 = iszero(k2) ? ZERO : k2 * 2 / sq * _fncall(:atan, Term[(2a * x + b) / sq])
-        return _mul((_pow(scal, MONE), part1 + part2))
-    end
-    return nothing
-end
-function _int_rational_poly(s::Term, x::Sym)
-    cs = polycoeffs(s, x)
-    cs === nothing && return nothing
-    return _add(Term[_mul((c, _pow(x, Num(k)), Num(Q(1) // k))) for (k, c) in enumerate(cs)])
-end
-
-# ∫ f(u) u' dx = ∫ f(U) dU
-function _int_subst(f::Term, x::Sym, depth::Int)
-    cands = _collect_sub!(Term[], y -> has(y, x) && y != x, f)
-    inner = Term[]
-    for y in cands
-        if y isa Fn
-            append!(inner, y.args)
-        elseif y isa Pow
-            push!(inner, y.base)
-            has(y.exp, x) && push!(inner, y.exp)
-        end
-        y isa Union{Fn,Pow} && push!(inner, y)
-    end
-    unique!(inner)
-    filter!(u -> has(u, x) && u != x, inner)
-    sort!(inner; by = complexity, rev = true)
-    for u in inner
-        du = diff(u, x)
-        iszero(du) && continue
-        q = _safe(z -> cancel(f / z), du)
-        q === nothing && continue
-        U = Sym(gensym(:U), SymInfo(_isreal_struct(u), false, nothing, false, nothing, false))
-        q2 = subs(q, u => U)
-        if has(q2, x)
-            # try inverting u = U for x
-            xs = _safe(z -> (_SOLVE_WARN[] = false; r = _solve1(u - z, x); _SOLVE_WARN[] = true; r), U)
-            _SOLVE_WARN[] = true
-            (xs === nothing || length(xs) != 1) && continue
-            q2 = cancel(subs(q, x => xs[1]))
-            has(q2, x) && continue
-        end
-        complexity(q2) > 3 * complexity(f) + 10 && continue
-        G = _int(q2, U, depth + 1)
-        G === nothing && continue
-        return subs(G, U => u)
-    end
-    return nothing
-end
-
-_ispolyin(p::Term, x::Sym) = polycoeffs(p, x) !== nothing
-
-function _int_parts(f::Term, x::Sym, depth::Int)
-    facs = f isa Mul ? Term[_powraw(p) for p in f.factors] : Term[f]
-    f isa Mul && !isone(f.c) && return nothing
-    # exp(lin) * sin/cos(lin)
-    if length(facs) == 2
-        e = findfirst(y -> y isa Fn && y.head === :exp && _linear(y.args[1], x) !== nothing, facs)
-        t = findfirst(y -> y isa Fn && y.head in (:sin, :cos) && _linear(y.args[1], x) !== nothing, facs)
-        if e !== nothing && t !== nothing
-            E, T = facs[e], facs[t]
-            a = _linear(E.args[1], x)[1]
-            b = _linear(T.args[1], x)[1]
-            u = T.args[1]
-            den = a^2 + b^2
-            r = T.head === :sin ? (a * _sin(u) - b * _cos(u)) : (a * _cos(u) + b * _sin(u))
-            return E * r / den
+        # log(k u) = log(u) + constant, for the rational content k of a sum
+        if a isa Add && a.c isa Q && all(p -> p.second isa Q, a.terms)
+            ks = Q[k for (_, k) in a.terms]
+            iszero(a.c) || push!(ks, a.c)
+            k = Q(gcd(numerator.(ks)), lcm(denominator.(ks)))
+            k > 0 && !isone(k) && return _log(_mul((Num(inv(k)), a)))
         end
     end
-    polys = Term[y for y in facs if _ispolyin(y, x)]
-    others = Term[y for y in facs if !_ispolyin(y, x)]
-    length(others) == 1 || return nothing
-    g = others[1]
-    P = _mul(polys)
-    if g isa Fn && g.head in (:exp, :sin, :cos, :sinh, :cosh) && _linear(g.args[1], x) !== nothing
-        n = degree(P, x)
-        (n === nothing || n > 12) && return nothing
-        out = Term[]
-        G = g
-        Pk = P
-        sgn = 1
-        for k in 0:n
-            G = _int(G, x, depth + 1)
-            G === nothing && return nothing
-            push!(out, sgn * Pk * G)
-            Pk = diff(Pk, x)
-            sgn = -sgn
-        end
-        return _add(out)
-    elseif g isa Fn && g.head in (:log, :atan, :asin, :acos) && !isempty(polys)
-        Pi = _int(P, x, depth + 1)
-        Pi === nothing && return nothing
-        rest = _int(cancel(Pi * diff(g, x)), x, depth + 1)
-        rest === nothing && return nothing
-        return Pi * g - rest
-    elseif g isa Pow && g.base isa Fn && g.base.head === :log && isint(g.exp) && g.exp.val > 0
-        # ∫ P log(u)^n: by parts, reducing the power
-        Pi = _int(P, x, depth + 1)
-        Pi === nothing && return nothing
-        rest = _int(cancel(Pi * diff(g, x)), x, depth + 1)
-        rest === nothing && return nothing
-        return Pi * g - rest
+    return y
+end
+
+# ---- definite integrals ------------------------------------------------------------
+
+function integrate(f, x::Sym, a, b)
+    f, a, b = toterm(f), toterm(a), toterm(b)
+    unev = Fn(:Integral, Term[f, x, a, b])
+    F = integrate(f, x)
+    F isa Fn && F.head === :Integral && return unev
+    _pole_inside(f, x, a, b) && return unev
+    pts = _tan_jumps(F, x, a, b)
+    pts === nothing && return unev
+    nodes = Term[a; pts; b]
+    total = Term[]
+    for k in 1:length(nodes)-1
+        hi = k + 1 < length(nodes) ? _jumpval(F, x, nodes[k+1], :left) : limit(F, x, nodes[k+1]; dir = :left)
+        lo = k > 1 ? _jumpval(F, x, nodes[k], :right) : limit(F, x, nodes[k]; dir = :right)
+        ((hi isa Fn && hi.head === :Limit) || (lo isa Fn && lo.head === :Limit)) && return unev
+        ((hi == INF && lo == INF) || (hi == MINF && lo == MINF)) && return unev
+        push!(total, hi - lo)
     end
-    return nothing
+    r = _add(total)
+    (has(r, INF) && length(total) > 1) && return unev
+    return simplify(r)
+end
+
+_numbound(a::Term) = (a == INF ? Inf : a == MINF ? -Inf : (v = _numval(a, Dict{Term,Term}()); v isa Real ? Float64(v) : nothing))
+
+# a real pole of a rational integrand strictly inside (a, b)
+function _pole_inside(f::Term, x::Sym, a::Term, b::Term)
+    lo, hi = _numbound(a), _numbound(b)
+    (lo === nothing || hi === nothing) && return false
+    lo > hi && ((lo, hi) = (hi, lo))
+    _isratfun(f, x) || return false
+    den = denominator(cancel(f))
+    cs = polycoeffs(den, x)
+    cs === nothing && return false
+    vs = Any[_numval(c, Dict{Term,Term}()) for c in cs]
+    any(v -> !(v isa Number), vs) && return false
+    for r in _numroots(ComplexF64.(vs))
+        abs(imag(r)) < 1e-9 * max(1, abs(r)) || continue
+        lo + 1e-12 < real(r) < hi - 1e-12 && return true
+    end
+    return false
+end
+
+# the one-sided limit of F at a point p where some tan(αx + β) in F is infinite
+function _jumpval(F::Term, x::Sym, p::Term, dir::Symbol)
+    τ = _isym(:τ, _IPOS)
+    d = Dict{Term,Term}()
+    for t in _collect_sub!(Term[], y -> y isa Fn && y.head === :tan && has(y, x), F)
+        l = _linear(t.args[1], x)
+        l === nothing && return Fn(:Limit, Term[F, x, p])
+        cv = _numval(_cos(subs(t.args[1], x => p)), Dict{Term,Term}())
+        (cv isa Number && abs(cv) < 1e-12) || continue
+        αv = _numval(l[1], Dict{Term,Term}())
+        s = (dir === :left) == (real(αv) > 0) ? 1 : -1
+        d[t] = s / τ
+    end
+    G = subs(subs(F, d), x => p)
+    return limit(G, τ, 0; dir = :right)
+end
+
+# the points in (a, b) where a tan(αx + β) in F jumps (nothing if infinitely many)
+function _tan_jumps(F::Term, x::Sym, a::Term, b::Term)
+    atoms = _collect_sub!(Term[], y -> y isa Fn && y.head === :tan && has(y, x), F)
+    isempty(atoms) && return Term[]
+    lo, hi = _numbound(a), _numbound(b)
+    (lo === nothing || hi === nothing) && return Term[]
+    (isinf(lo) || isinf(hi)) && return nothing
+    pts = Term[]
+    for t in atoms
+        l = _linear(t.args[1], x)
+        l === nothing && return nothing
+        α, β = l
+        av, bv = _numval(α, Dict{Term,Term}()), _numval(β, Dict{Term,Term}())
+        (av isa Real && bv isa Real) || return nothing
+        # αx + β = π/2 + kπ
+        ks = sort([(av * lo + bv - π / 2) / π, (av * hi + bv - π / 2) / π])
+        for k in ceil(Int, ks[1]):floor(Int, ks[2])
+            p = cancel((PI / 2 + k * PI - β) / α)
+            pv = _numval(p, Dict{Term,Term}())
+            (min(lo, hi) < pv < max(lo, hi)) && push!(pts, p)
+        end
+    end
+    unique!(pts)
+    sort!(pts; by = p -> _numval(p, Dict{Term,Term}()), rev = _numbound(a) > _numbound(b))
+    return pts
 end
