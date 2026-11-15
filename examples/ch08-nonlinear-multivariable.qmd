@@ -1,0 +1,136 @@
+---
+title: "Nonlinear models with several variables"
+subtitle: "Otto & Day, chapter 8, with PracticalCAS"
+engine: julia
+---
+
+For a nonlinear model the recipe is to find the equilibria, compute the
+Jacobian at each one, and apply the linear stability conditions from
+chapter 7. `stability` does all three steps.
+
+```{julia}
+using PracticalCAS
+```
+
+## Competition
+
+In Lotka–Volterra competition, species 1 and 2 have carrying capacities
+`K₁`, `K₂`. A competitor counts `α` (or `β`) times as much as a member of
+one's own species.
+
+```{julia}
+@syms n₁::nonneg n₂::nonneg r₁::positive r₂::positive K₁::positive K₂::positive α::positive β::positive
+comp = ode(n₁ => r₁ * n₁ * (1 - (n₁ + α * n₂) / K₁),
+           n₂ => r₂ * n₂ * (1 - (n₂ + β * n₁) / K₂))
+eqs = equilibria(comp)
+```
+
+Species 2 alone resists invasion by species 1 when `K₁ < α K₂`:
+
+```{julia}
+only2 = only(e for e in eqs if iszero(e[n₁]) && !iszero(e[n₂]))
+stability(comp, only2)
+```
+
+```{julia}
+#| include: false
+@assert length(eqs) == 4
+@assert isequiv(stability(comp, only2).condition, K₁ < α * K₂)
+```
+
+The coexistence equilibrium is stable when each species limits itself more
+than it limits the other (here with numbers, `α = β = 1/2`):
+
+```{julia}
+co = only(e for e in eqs if !iszero(e[n₁]) && !iszero(e[n₂]))
+sc = stability(comp, co)
+decide(subs(sc.condition, α => 1 // 2, β => 1 // 2, K₁ => 1, K₂ => 1))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(co[n₁], (K₁ - α * K₂) / (1 - α * β))
+@assert decide(subs(sc.condition, α => 1 // 2, β => 1 // 2, K₁ => 1, K₂ => 1)) === true
+@assert decide(subs(sc.condition, α => 2, β => 2, K₁ => 1, K₂ => 1)) === false
+```
+
+## Predators and prey
+
+In the Lotka–Volterra predator–prey model the interior equilibrium has purely
+imaginary eigenvalues: a centre, which linear analysis cannot classify (the
+verdict is `neutral`).
+
+```{julia}
+@syms N::nonneg P::nonneg r::positive b::positive c::positive d::positive K::positive
+lv = ode(N => r * N - b * N * P, P => c * b * N * P - d * P)
+inner = only(e for e in equilibria(lv) if !iszero(e[N]))
+stability(lv, inner)
+```
+
+```{julia}
+#| include: false
+sl = stability(lv, inner)
+@assert sl.verdict === :neutral
+@assert isequiv(inner[N], d / (c * b)) && isequiv(inner[P], r / b)
+```
+
+Logistic growth of the prey turns the centre into a stable equilibrium
+whenever the equilibrium is feasible (positive):
+
+```{julia}
+rm = ode(N => r * N * (1 - N / K) - b * N * P, P => c * b * N * P - d * P)
+inner2 = only(e for e in equilibria(rm) if !iszero(e[N]) && !iszero(e[P]))
+```
+
+```{julia}
+s2 = stability(rm, inner2)
+s2.condition
+```
+
+```{julia}
+assuming(c * b * K > d) do        # the predator can persist
+    decide(s2.condition)
+end
+```
+
+```{julia}
+#| include: false
+@assert assuming(() -> decide(s2.condition), c * b * K > d) === true
+```
+
+## An epidemic with births and deaths
+
+In an SIR model with recruitment `Λ`, transmission `β`, recovery `γ` and death
+rate `μ`, the disease-free equilibrium is stable when `R₀ < 1`, and the
+endemic one exists and is stable when `R₀ > 1`.
+
+```{julia}
+@syms S::nonneg I::nonneg Λ::positive β::positive γ::positive μ::positive
+sir = ode(S => Λ - β * S * I - μ * S, I => β * S * I - (γ + μ) * I)
+equilibria(sir)
+```
+
+```{julia}
+dfe = Dict(S => Λ / μ, I => 0)
+R₀ = reproduction_number([β * S * I], [(γ + μ) * I], [I], dfe)
+```
+
+```{julia}
+stability(sir, dfe).condition
+```
+
+```{julia}
+endemic = only(e for e in equilibria(sir) if !iszero(e[I]))
+se = stability(sir, endemic)
+assuming(β * Λ > μ * (γ + μ)) do   # R₀ > 1
+    decide(se.condition)
+end
+```
+
+```{julia}
+#| include: false
+@assert isequiv(R₀, β * Λ / (μ * (γ + μ)))
+@assert isequiv(stability(sir, dfe).condition, β * Λ < μ * (γ + μ))
+@assert isequiv(endemic[S], (γ + μ) / β)
+@assert assuming(() -> decide(se.condition), β * Λ > μ * (γ + μ)) === true
+```

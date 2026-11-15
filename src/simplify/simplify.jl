@@ -274,6 +274,25 @@ function isequiv(a, b)
     return z !== nothing && iszero(z)
 end
 
+# conditions: equivalent when (lhs - rhs) differ by a positive constant factor
+# after orienting both as `> / ≥ / == / ≠`
+function isequiv(a::Rel, b::Rel)
+    ga, oa = _oriented(a)
+    gb, ob = _oriented(b)
+    oa === ob || return false
+    r = _safe(cancel, ga / gb)
+    r isa Num || return false
+    return oa in (:(==), :!=) ? !iszero(r.val) : r.val > 0
+end
+isequiv(a::Bool, b::Bool) = a == b
+isequiv(a::Rel, b::Bool) = decide(a) === b
+isequiv(a::Bool, b::Rel) = decide(b) === a
+function _oriented(c::Rel)
+    g = cancel(c.lhs - c.rhs)
+    c.op in (:<, :<=) && return (_mul((MONE, g)), _FLIPOP[c.op])
+    return (g, c.op)
+end
+
 """
     logcombine(x)
 

@@ -1,0 +1,123 @@
+---
+title: "General solutions: one-variable models"
+subtitle: "Otto & Day, chapter 6, with PracticalCAS"
+engine: julia
+---
+
+Equilibria and their stability describe where a model goes. A general
+solution says how it gets there: `n(t)` as a function of time and the initial
+value. `dsolve` solves continuous-time models and `rsolve` discrete-time ones.
+
+```{julia}
+using PracticalCAS
+@syms t::nonneg n::positive r::positive K::positive R::positive n₀::positive m::positive
+```
+
+## Exponential growth
+
+```{julia}
+dsolve(r * n, n, t; ic = n₀), rsolve(R * n, n, t)
+```
+
+```{julia}
+#| include: false
+@assert dsolve(r * n, n, t; ic = n₀) == n₀ * exp(r * t)
+@assert rsolve(R * n, n, t) == n₀ * R^t
+```
+
+## Logistic growth
+
+The logistic equation is separable, and also a Bernoulli equation. The
+solution rises from `n₀` towards `K`.
+
+```{julia}
+nt = dsolve(r * n * (1 - n / K), n, t; ic = n₀)
+```
+
+```{julia}
+limit(nt, t, ∞)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(diff(nt, t), r * nt * (1 - nt / K))
+@assert isequiv(subs(nt, t => 0), n₀)
+@assert limit(nt, t, ∞) == K
+```
+
+How long until the population reaches half its carrying capacity?
+
+```{julia}
+t_half = only(solve(nt ~ K / 2, t))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(subs(nt, t => t_half), K / 2)
+```
+
+## Immigration into a declining or growing population
+
+`n(t+1) = R n(t) + m` is linear. Its solution approaches the equilibrium
+`m/(1 - R)` when `R < 1`.
+
+```{julia}
+imm = rsolve(R * n + m, n, t)
+```
+
+```{julia}
+#| include: false
+f(x) = R * x + m
+@assert isequiv(subs(imm, t => 3), f(f(f(n₀))))
+```
+
+## Beverton–Holt
+
+A linear-fractional map becomes linear in `1/n`, and `rsolve` uses that
+transformation.
+
+```{julia}
+bh = rsolve(R * n / (1 + (R - 1) * n / K), n, t)
+```
+
+```{julia}
+#| include: false
+g(x) = R * x / (1 + (R - 1) * x / K)
+@assert isequiv(subs(bh, t => 2), g(g(n₀)))
+```
+
+## Haploid selection
+
+In discrete time the allele frequency is the initial frequency weighted by the
+fitnesses raised to the number of generations:
+
+```{julia}
+@syms p::(0, 1) p₀::(0, 1) WA::positive Wa::positive s::positive
+pt = rsolve(p * WA / (p * WA + (1 - p) * Wa), p, t; ic = p₀)
+```
+
+```{julia}
+#| include: false
+h(x) = x * WA / (x * WA + (1 - x) * Wa)
+@assert isequiv(subs(pt, t => 2), h(h(p₀)))
+@assert isequiv(pt, p₀ * WA^t / (p₀ * WA^t + (1 - p₀) * Wa^t))
+```
+
+In continuous time `dp/dt = s p (1 - p)` gives a logistic curve in the allele
+frequency. The time for a beneficial allele to go from `p₀` to frequency `p₁`
+follows by solving for `t`.
+
+```{julia}
+pc = dsolve(s * p * (1 - p), p, t; ic = p₀)
+```
+
+```{julia}
+@syms p₁::(0, 1)
+t₁ = only(solve(pc ~ p₁, t))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(diff(pc, t), s * pc * (1 - pc))
+@assert isequiv(subs(pc, t => t₁), p₁)
+```

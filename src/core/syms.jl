@@ -154,7 +154,8 @@ function _addfact!(c)
     end
     c isa Bool && return
     c isa Rel || throw(ArgumentError("assume!: expected a relation such as `a < b`, got $c"))
-    g = _add((c.lhs, _mul((MONE, c.rhs))))
+    # stored expanded: sign_of tries a query's expanded form, so they meet there
+    g = expand(_add((c.lhs, _mul((MONE, c.rhs)))))
     g isa Num && return
     k, gn = _normlead(g)
     m = _OPMASK[c.op]

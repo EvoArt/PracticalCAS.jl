@@ -27,8 +27,19 @@ _genpow(b::Term, e::Term) = begin
     elseif e isa Add && !iszero(e.c) && e.c isa Q && _isint(e.c)
         return nothing   # split by _rf into b^c * b^(rest)
     end
+    # b^(-t) is (b^t)^(-1), so that b^t and b^(-t) cancel
+    _looks_negative(e) && return (_pow(b, _mul((MONE, e))), -1)
     return (Pow(b, e), 1)
 end
+
+# a generator for a non-power term: exp(-u) is exp(u)^(-1)
+function _genatom(x::Term)
+    if x isa Fn && x.head === :exp && _looks_negative(x.args[1])
+        return (_exp(_mul((MONE, x.args[1]))), -1)
+    end
+    return (x, 1)
+end
+_intrest(e::Term) = _add(Term[_scale(t, k) for (t, k) in e.terms])
 
 function _collect_gens!(g::Gens, x::Term)
     if x isa Num
@@ -40,7 +51,7 @@ function _collect_gens!(g::Gens, x::Term)
     elseif x isa Pow
         _collect_gens_pow!(g, x.base, x.exp)
     else
-        _gen!(g, x)
+        _gen!(g, _genatom(x)[1])
     end
     return g
 end
@@ -51,8 +62,8 @@ function _collect_gens_pow!(g::Gens, b::Term, e::Term)
         _collect_gens!(g, b)
     elseif e isa Add && e.c isa Q && !iszero(e.c) && _isint(e.c)
         _collect_gens!(g, b)
-        rest = _add(Term[_scale(t, k) for (t, k) in e.terms])
-        _gen!(g, Pow(b, rest))
+        bb, _ = _genpow(b, _intrest(e))
+        _gen!(g, bb)
     else
         bb, _ = _genpow(b, e)
         _gen!(g, bb)
@@ -91,7 +102,9 @@ function _rf(x::Term, g::Gens)::Tuple{MP,MP}
     elseif x isa Pow
         return _rfpow(x.base, x.exp, g)
     end
-    return (mpvar(nv, g.idx[x]), mpconst(nv, 1))
+    a, k = _genatom(x)
+    v = mpvar(nv, g.idx[a])
+    return k > 0 ? (v, mpconst(nv, 1)) : (mpconst(nv, 1), v)
 end
 
 function _rfpow(b::Term, e::Term, g::Gens)
@@ -103,8 +116,9 @@ function _rfpow(b::Term, e::Term, g::Gens)
         return k >= 0 ? (n^k, d^k) : (d^(-k), n^(-k))
     elseif e isa Add && e.c isa Q && !iszero(e.c) && _isint(e.c)
         n, d = _rfpow(b, Num(e.c), g)
-        rest = _add(Term[_scale(t, k) for (t, k) in e.terms])
-        return (n * mpvar(nv, g.idx[Pow(b, rest)]), d)
+        bb, k = _genpow(b, _intrest(e))
+        v = mpvar(nv, g.idx[bb])
+        return k > 0 ? (n * v, d) : (n, d * v)
     end
     bb, k = _genpow(b, e)
     i = g.idx[bb]

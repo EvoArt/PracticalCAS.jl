@@ -70,7 +70,10 @@ _pointdict(p::AbstractDict) = Dict{Term,Term}(toterm(k) => toterm(v) for (k, v) 
 The local stability of an equilibrium: the point, the Jacobian there, its
 eigenvalues (when they could be found), the condition for stability
 (Routh–Hurwitz in continuous time, Jury in discrete time, simplified under the
-assumptions) and the verdict `:stable`, `:unstable` or `:depends`.
+assumptions) and the verdict `:stable`, `:unstable`, `:depends`, or
+`:neutral` when the eigenvalues sit on the stability boundary (purely imaginary
+in continuous time, modulus 1 in discrete time) so that the linearisation does
+not decide.
 """
 struct Stability
     point::Dict{Sym,Term}
@@ -121,10 +124,34 @@ function stability(m::DynModel, point::AbstractDict)
         cond = _iscont(m) ? routh_hurwitz(J) : jury(J)
     end
     v = decide_verdict(cond)
+    v === :unstable && _borderline(vals, _iscont(m)) && (v = :neutral)
     pd = Dict{Sym,Term}(k => toterm(x) for (k, x) in point)
     return Stability(pd, J, vals, cond, v, _iscont(m))
 end
 stability(m::DynModel) = [stability(m, e) for e in equilibria(m)]
+
+# no eigenvalue is known to be unstable but some sit on the boundary (real part
+# 0 in continuous time, modulus 1 in discrete time): linearisation is inconclusive
+function _borderline(vals, cont::Bool)
+    isempty(vals) && return false
+    onb = false
+    for λ in vals
+        if cont
+            re = _safe(z -> simplify(reim(z)[1]), λ)
+            re === nothing && return false
+            sre = sign_of(re)
+            (sre & (POS | CPX)) != 0 && return false
+            sre == ZER && (onb = true)
+        else
+            re, im_ = reim(λ)
+            m2 = simplify(re^2 + im_^2 - 1)
+            sm = sign_of(m2)
+            (sm & (POS | CPX)) != 0 && return false
+            sm == ZER && (onb = true)
+        end
+    end
+    return onb
+end
 
 decide_verdict(c) = (d = decide(c); d === true ? :stable : d === false ? :unstable : :depends)
 

@@ -1,0 +1,7 @@
+[deps]
+PracticalBayesPlot = "abd9f751-687e-4400-a054-1391536a3b77"
+PracticalCAS = "6dbbbc55-c538-46ae-ad30-c62b7d55a922"
+
+[sources]
+PracticalBayesPlot = {url = "https://github.com/EvoArt/PracticalBayesPlot.jl"}
+PracticalCAS = {path = ".."}

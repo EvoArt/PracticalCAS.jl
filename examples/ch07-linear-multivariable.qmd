@@ -1,0 +1,146 @@
+---
+title: "Linear models with several variables"
+subtitle: "Otto & Day, chapters 7 and 9 and Primer 2, with PracticalCAS"
+engine: julia
+---
+
+A linear model in several variables is a matrix: `dn/dt = A n` or
+`n(t+1) = A n(t)`. Its behaviour is set by the eigenvalues of `A`. In
+continuous time the origin is stable when every eigenvalue has negative real
+part; in discrete time it is stable when every eigenvalue lies inside the unit
+circle. For a 2×2 matrix these reduce to conditions on the trace and the
+determinant.
+
+```{julia}
+using PracticalCAS
+@syms a b c d λ t::nonneg
+A = [a b; c d]
+charpoly(A, λ)
+```
+
+```{julia}
+routh_hurwitz(A)
+```
+
+```{julia}
+jury(A)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(charpoly(A, λ), λ^2 - (a + d) * λ + a * d - b * c)
+rh = routh_hurwitz(A)
+@assert decide(subs(rh, a => -1, b => 0, c => 0, d => -2)) === true
+@assert decide(subs(rh, a => 1, b => 0, c => 0, d => -2)) === false
+j = jury(A)
+@assert decide(subs(j, a => 1 // 2, b => 0, c => 0, d => -1 // 3)) === true
+@assert decide(subs(j, a => 2, b => 0, c => 0, d => 0)) === false
+```
+
+## Two patches with migration
+
+Two populations grow at rates `r₁`, `r₂` and exchange migrants at rate `m`.
+The population as a whole persists when the leading eigenvalue is positive.
+Even if one patch is a sink (`r₂ < 0`), migration from a source keeps both
+going.
+
+```{julia}
+@syms r₁ r₂ m::positive n₁ n₂
+patches = ode(n₁ => r₁ * n₁ - m * n₁ + m * n₂, n₂ => r₂ * n₂ - m * n₂ + m * n₁)
+J = jacobian(patches)
+eigvals(J)
+```
+
+```{julia}
+st = stability(patches, Dict(n₁ => 0, n₂ => 0))
+st.condition
+```
+
+```{julia}
+#| include: false
+λs = eigvals(J)
+@assert length(λs) == 2
+@assert isequiv(sum(λs), r₁ + r₂ - 2m)
+# a source (r₁ = 1) and a sink (r₂ = -1/2) with m = 1/10: the origin is unstable (growth)
+@assert decide(subs(st.condition, r₁ => 1, r₂ => -1 // 2, m => 1 // 10)) === false
+@assert decide(subs(st.condition, r₁ => -1, r₂ => -1 // 2, m => 1 // 10)) === true
+```
+
+## General solutions by diagonalisation
+
+The solution of `dn/dt = A n` is `exp(A t) n(0)`, and that of
+`n(t+1) = A n(t)` is `Aᵗ n(0)`. When `A` has distinct eigenvalues,
+`A = P D P⁻¹` and both reduce to powers or exponentials of the eigenvalues.
+
+```{julia}
+M = symbolic([1 2; 2 1])
+eigen(M)
+```
+
+```{julia}
+matpow(M, t)
+```
+
+```{julia}
+@syms x y
+dsolve([x + 2y, 2x + y], [x, y], t; ic = [1, 0])
+```
+
+```{julia}
+#| include: false
+P = matpow(M, t)
+@assert all(isequiv.(subs(P, t => 3), M^3))
+sol = dsolve([x + 2y, 2x + y], [x, y], t; ic = [1, 0])
+@assert isequiv(diff(sol[1], t), sol[1] + 2sol[2])
+@assert isequiv(subs(sol[1], t => 0), 1)
+```
+
+## A population with juveniles and adults
+
+Juveniles survive to adulthood with probability `s`, and adults survive with
+probability `v` and produce `f` juveniles each. Here is the Leslie-type
+matrix, its characteristic polynomial, and its dominant eigenvalue (the
+long-term growth factor):
+
+```{julia}
+@syms f::positive s::(0, 1) v::(0, 1)
+L = [0 f; s v]
+charpoly(L, λ)
+```
+
+```{julia}
+λs = eigvals(L)
+```
+
+The population grows (`λ > 1`) exactly when `f s + v > 1`: each adult replaces
+itself through reproduction plus survival.
+
+```{julia}
+#| include: false
+λ₁ = λs[2]   # the root with + sqrt
+@assert isequiv(subs(λ₁, f => 2, s => 1 // 2, v => 1 // 2), (1 // 2 + sqrt(toterm(17 // 4))) / 2) ||
+        isequiv(subs(λs[1], f => 2, s => 1 // 2, v => 1 // 2), (1 // 2 + sqrt(toterm(17 // 4))) / 2)
+p1 = subs(charpoly(L, λ), λ => 1)            # positive iff the dominant root is below 1
+@assert isequiv(p1, 1 - v - f * s)
+```
+
+```{julia}
+subs(charpoly(L, λ), λ => 1)
+```
+
+With numbers, the stable stage distribution and the reproductive values come
+from the right and left eigenvectors:
+
+```{julia}
+L2 = symbolic([0 4; 1//2 0])
+λ₂ = sqrt(toterm(2))
+stable_distribution(L2, λ₂), reproductive_values(L2, λ₂)
+```
+
+```{julia}
+#| include: false
+w = stable_distribution(L2, λ₂)
+@assert all(isequiv.(L2 * w, λ₂ * w))
+@assert isequiv(sum(w), 1)
+@assert isequiv(sum(elasticity(L2, λ₂)), 1)
+```

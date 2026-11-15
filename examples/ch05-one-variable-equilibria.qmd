@@ -1,0 +1,180 @@
+---
+title: "Equilibria and stability: one-variable models"
+subtitle: "Otto & Day, chapter 5, with PracticalCAS"
+engine: julia
+---
+
+A model in one variable either gives the rate of change, `dn/dt = f(n)`, or
+the next value, `n(t+1) = f(n(t))`. Its equilibria are where nothing changes:
+`f(n) = 0` in continuous time and `f(n) = n` in discrete time. An equilibrium
+`n̂` is locally stable when small perturbations shrink. That depends on the
+slope `λ = f′(n̂)`: in continuous time it needs `λ < 0`, and in discrete time
+`-1 < λ < 1`. In discrete time a negative `λ` also means the approach
+oscillates.
+
+```{julia}
+using PracticalCAS
+@syms n::nonneg r::positive K::positive R::positive
+```
+
+## Exponential and logistic growth
+
+With an intrinsic rate `ρ` of unknown sign, the only equilibrium of
+exponential growth is `n = 0`. It is stable exactly when the population
+declines (`ρ < 0`).
+
+```{julia}
+@syms ρ
+expo = ode(n => ρ * n)
+stability(expo)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(only(stability(expo)).condition, ρ < 0)
+```
+
+Logistic growth has equilibria `0` and `K`. With `r > 0` the sign engine
+decides both verdicts without further input.
+
+```{julia}
+logistic = ode(n => r * n * (1 - n / K))
+equilibria(logistic)
+```
+
+```{julia}
+stability(logistic)
+```
+
+```{julia}
+#| include: false
+st = Dict(only(values(s.point)) => s for s in stability(logistic))
+@assert st[toterm(0)].verdict === :unstable && st[K].verdict === :stable
+@assert st[K].eigenvalues == [-r]
+```
+
+## Discrete logistic, Ricker and Beverton–Holt
+
+In discrete time the carrying capacity can lose stability. For the discrete
+logistic `n + r n (1 - n/K)` the slope at `K` is `1 - r`.
+
+```{julia}
+dlog = recurrence(n => n + r * n * (1 - n / K))
+sK = stability(dlog, Dict(n => K))
+sK.eigenvalues, sK.condition
+```
+
+The approach is oscillatory when the eigenvalue is negative, that is when
+`r > 1`:
+
+```{julia}
+simplify(sK.eigenvalues[1] < 0)
+```
+
+```{julia}
+#| include: false
+@assert isequiv(sK.eigenvalues[1], 1 - r)
+@assert isequiv(sK.condition, r < 2)
+@assert isequiv(simplify(sK.eigenvalues[1] < 0), r > 1)
+```
+
+The Ricker model behaves the same way near `K`. The Beverton–Holt model never
+overshoots: its slope at `K` is `1/R`, between 0 and 1 whenever `R > 1`.
+
+```{julia}
+ricker = recurrence(n => n * exp(r * (1 - n / K)))
+equilibria(ricker), stability(ricker, Dict(n => K)).condition
+```
+
+```{julia}
+bh = recurrence(n => R * n / (1 + (R - 1) * n / K))
+stability(bh, Dict(n => K)).eigenvalues
+```
+
+```{julia}
+#| include: false
+@assert Set(e[n] for e in equilibria(ricker)) == Set([toterm(0), K])
+@assert isequiv(stability(ricker, Dict(n => K)).condition, r < 2)
+@assert isequiv(only(stability(bh, Dict(n => K)).eigenvalues), 1 / R)
+```
+
+## Haploid selection
+
+Allele `A` at frequency `p` has fitness `WA`, allele `a` has fitness `Wa`. One
+generation of selection gives `p′ = p WA / (p WA + (1 - p) Wa)`.
+
+```{julia}
+@syms p::[0, 1] WA::positive Wa::positive
+hap = recurrence(p => p * WA / (p * WA + (1 - p) * Wa))
+[(e[p], stability(hap, e).condition) for e in equilibria(hap)]
+```
+
+So `p = 1` (fixation of `A`) is stable when `A` is fitter. The continuous-time
+version `dp/dt = s p (1 - p)` gives the same picture with the selection
+coefficient `s`.
+
+```{julia}
+#| include: false
+hs = Dict(e[p] => stability(hap, e).condition for e in equilibria(hap))
+@assert isequiv(hs[toterm(1)], Wa < WA)
+@assert isequiv(hs[toterm(0)], WA < Wa)
+```
+
+```{julia}
+@syms s
+hapc = ode(p => s * p * (1 - p))
+[(e[p], stability(hapc, e).condition) for e in equilibria(hapc)]
+```
+
+```{julia}
+#| include: false
+hc = Dict(e[p] => stability(hapc, e).condition for e in equilibria(hapc))
+@assert isequiv(hc[toterm(1)], s > 0) && isequiv(hc[toterm(0)], s < 0)
+```
+
+## Diploid selection
+
+With genotype fitnesses `WAA`, `WAa`, `Waa` and random mating, the allele
+frequency after selection is `(p² WAA + p q WAa) / W̄`, where `W̄` is the mean
+fitness. Besides `p = 0` and `p = 1` there is a polymorphic equilibrium.
+
+```{julia}
+@syms WAA::positive WAa::positive Waa::positive
+q = 1 - p
+Wbar = p^2 * WAA + 2p * q * WAa + q^2 * Waa
+dip = recurrence(p => (p^2 * WAA + p * q * WAa) / Wbar)
+eqs = equilibria(dip)
+```
+
+```{julia}
+p̂ = only(e[p] for e in eqs if !(e[p] isa Num))
+```
+
+It is stable under heterozygote advantage and unstable under heterozygote
+disadvantage. Here are both cases with numbers:
+
+```{julia}
+st = stability(dip, Dict(p => p̂))
+over = (WAA => 9 // 10, WAa => 1, Waa => 8 // 10)
+under = (WAA => 11 // 10, WAa => 1, Waa => 12 // 10)
+decide(subs(st.condition, over...)), decide(subs(st.condition, under...))
+```
+
+```{julia}
+#| include: false
+@assert isequiv(p̂, (WAa - Waa) / (2WAa - WAA - Waa))
+@assert decide(subs(st.condition, over...)) === true
+@assert decide(subs(st.condition, under...)) === false
+```
+
+The fixation equilibrium `p = 1` is stable exactly when `AA` is fitter than
+`Aa`:
+
+```{julia}
+stability(dip, Dict(p => 1)).condition
+```
+
+```{julia}
+#| include: false
+@assert isequiv(stability(dip, Dict(p => 1)).condition, WAa < WAA)
+```
