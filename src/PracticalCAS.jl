@@ -106,7 +106,8 @@ export Cycle, cycles, hopf, conserved_quantity, isconserved, quasi_steady_state
 export stationary_distribution, pgf, pgf_moments, extinction_probability,
     fixation_probability, moran, wright_fisher, diffusion_fixation,
     diffusion_stationary, diffusion_time
-export simulate, cobweb, bifurcation_data
+export simulate, cobweb, bifurcation_data, gillespie, markov_path, wright_fisher_path
+
 
 export DynamicsEdge, DynamicsGraph, dynamics_graph, PhaseData, phase_data, ternary_data
 export dynamicsplot, dynamicsplot!, phaseplot, phaseplot!, ternaryplot, ternaryplot!

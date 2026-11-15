@@ -165,3 +165,19 @@ end
     @syms mm rr
     @test selection_gradient([mm / (2rr) mm / (2rr); 1 0], mm, rr) ≅ 2 / (3rr)
 end
+
+@testset "stochastic simulation" begin
+    # statistical checks with wide margins (more than 5 standard deviations)
+    @syms n λ μ
+    # pure death: each of 50 individuals dies at rate 1; mean count at t = 1 is 50/e
+    ends = [gillespie([n], [n => [-1]], [50], 1.0).u[end, 1] for _ in 1:400]
+    @test abs(sum(ends) / 400 - 50 / ℯ) < 5 * sqrt(50 * exp(-1) * (1 - exp(-1)) / 400)
+    g = gillespie([n], [λ * n => [1], μ * n => [-1]], [5], 2.0; parameters = Dict(λ => 1, μ => 0.5))
+    @test g.t[1] == 0 && issorted(g.t) && all(abs.(diff(g.u[:, 1])) .== 1)
+    @test_throws ArgumentError gillespie([n], [λ * n => [1]], [1], 1.0)
+    # neutral Wright–Fisher: fixation probability = initial frequency
+    fixed = count(_ -> wright_fisher_path(10, 2, 10_000)[end] == 10, 1:2000)
+    @test abs(fixed / 2000 - 0.2) < 5 * sqrt(0.2 * 0.8 / 2000)
+    path = markov_path([0 1; 1 0], 1, 5)
+    @test path == [1, 2, 1, 2, 1, 2]
+end

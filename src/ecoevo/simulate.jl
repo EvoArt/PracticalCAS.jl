@@ -133,3 +133,88 @@ function bifurcation_data(m::MapModel, μ::Sym, values; ic, transient::Integer =
     end
     return (parameter = ps, state = xs)
 end
+
+# ---- stochastic simulation ----------------------------------------------------------
+
+_rand(rng) = rng === nothing ? rand() : rand(rng)
+
+"""
+    gillespie(vars, events, ic, T; parameters = Dict(), rng = nothing, maxevents = 10^6) -> (t, u)
+
+An exact stochastic simulation (Gillespie's direct method) of a continuous-time
+Markov chain on counts: `events` is a vector of `rate => change` pairs, each
+rate a term in the variables `vars` (and parameters), each change a vector of
+increments. Runs from the state `ic` until time `T`, no event is possible, or
+`maxevents`. Returns the event times `t` (starting at 0) and the states `u`
+(one row per time). Pass `rng` (e.g. `Random.Xoshiro(1)`) for reproducibility.
+
+    @syms S I R β γ
+    gillespie([S, I, R], [β * S * I => [-1, 1, 0], γ * I => [0, -1, 1]], [99, 1, 0], 50;
+              parameters = Dict(β => 0.003, γ => 0.1))
+"""
+function gillespie(vars::AbstractVector, events::AbstractVector, ic, T::Real;
+                   parameters = Dict(), rng = nothing, maxevents::Integer = 1_000_000)
+    d = Dict{Term,Term}(toterm(k) => toterm(v) for (k, v) in parameters)
+    rates = Term[subs(toterm(e.first), d) for e in events]
+    extra = setdiff(free_symbols(rates), vars)
+    isempty(extra) || throw(ArgumentError("gillespie: give values for the parameters $(join(string.(extra), ", "))"))
+    f = lambdify(rates, Sym[v for v in vars])
+    Δ = [Float64.(collect(e.second)) for e in events]
+    all(length(δ) == length(vars) for δ in Δ) || throw(ArgumentError("gillespie: each change needs one entry per variable"))
+    x = Float64.(collect(ic))
+    ts, us = [0.0], [copy(x)]
+    t = 0.0
+    for _ in 1:maxevents
+        a = max.(Float64.(real.(f(x...))), 0.0)
+        a0 = sum(a)
+        a0 > 0 || break
+        t += -log(1 - _rand(rng)) / a0
+        t > T && break
+        r = _rand(rng) * a0
+        j = something(findfirst(>=(r), cumsum(a)), length(a))
+        x = x .+ Δ[j]
+        push!(ts, t)
+        push!(us, copy(x))
+    end
+    return (t = ts, u = reduce(vcat, permutedims.(us)))
+end
+
+"""
+    markov_path(P, i0, steps; parameters = Dict(), rng = nothing) -> Vector{Int}
+
+A sample path of the Markov chain with transition matrix `P` (rows sum to 1;
+symbolic entries take their values from `parameters`), starting in state `i0`.
+"""
+function markov_path(P::AbstractMatrix, i0::Integer, steps::Integer; parameters = Dict(), rng = nothing)
+    d = Dict{Term,Term}(toterm(k) => toterm(v) for (k, v) in parameters)
+    M = [Float64(evalf(subs(toterm(x), d))) for x in P]
+    path = [i0]
+    i = i0
+    for _ in 1:steps
+        r = _rand(rng)
+        i = something(findfirst(>=(r), cumsum(M[i, :])), size(M, 2))
+        push!(path, i)
+    end
+    return path
+end
+
+"""
+    wright_fisher_path(N, i0, generations; s = 0, rng = nothing) -> Vector{Int}
+
+A simulated trajectory of the number of copies of an allele in a haploid
+Wright–Fisher population of size `N`, starting from `i0` copies: each
+generation is a binomial sample of size `N` at the frequency after selection
+`p(1 + s)/(1 + p s)`. Stops early at loss or fixation.
+"""
+function wright_fisher_path(N::Integer, i0::Integer, generations::Integer; s::Real = 0, rng = nothing)
+    path = [i0]
+    i = i0
+    for _ in 1:generations
+        (i == 0 || i == N) && break
+        p = i / N
+        ps = p * (1 + s) / (1 + p * s)
+        i = count(_ -> _rand(rng) < ps, 1:N)
+        push!(path, i)
+    end
+    return path
+end

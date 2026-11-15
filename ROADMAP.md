@@ -65,7 +65,10 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
       `pgf`, `pgf_moments`, `extinction_probability`, `fixation_probability`,
       `moran`, `wright_fisher`, `diffusion_fixation`, `diffusion_time`,
       `diffusion_stationary`; `simulate` (maps; adaptive Dormand–Prince for
-      ODEs), `cobweb`, `bifurcation_data`.
+      ODEs), `cobweb`, `bifurcation_data`; stochastic simulation with
+      `gillespie`, `markov_path`, `wright_fisher_path`; Gaussian moments
+      `∫ P(x) e^(quadratic)` over the real line.
+
 
 - [x] Optional PracticalBayesPlot extension: symbolic influence graphs,
       two-variable phase portraits, and ternary game/frequency dynamics, with
@@ -74,9 +77,8 @@ PracticalProbability.jl using it for the algebra inside probability expressions.
 
 ## Next, for Otto & Day
 
-- [ ] Stochastic simulation (Gillespie, Wright–Fisher sampling) to sit beside
-      the analytical results of chapters 14–15; Kolmogorov equations through
-      generating-function PDEs.
+- [ ] Kolmogorov equations through generating-function PDEs (first-order
+      linear PDEs by characteristics); tau-leaping for large stochastic models.
 - [ ] Singular perturbation (roots that move to infinity as ε → 0, matched
       asymptotics); averaging for weakly nonlinear oscillations.
 - [ ] `dsolve`: exact and homogeneous first-order equations; linear equations

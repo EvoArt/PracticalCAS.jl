@@ -34,7 +34,9 @@ theory and adaptive dynamics.
   invasion with class structure; stochastic models (`stationary_distribution`,
   `extinction_probability`, `fixation_probability`, `moran`, `wright_fisher`,
   diffusion fixation, absorption times and stationary densities); `simulate`,
-  `cobweb` and `bifurcation_data` for numerical exploration.
+  `cobweb` and `bifurcation_data` for numerical exploration, and `gillespie`,
+  `markov_path` and `wright_fisher_path` for stochastic simulation.
+
 - LaTeX output (`latex(x)`, and automatically in notebooks and Quarto).
 
 ## Example
