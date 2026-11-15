@@ -48,4 +48,5 @@ jobs:
           Pkg.activate(mktempdir())
           Pkg.develop(path=pwd())
           Pkg.add(url="https://github.com/EvoArt/PracticalBayesPlot.jl")
-          include("test/plotting_backend.jl")
+          include(joinpath(pwd(), "test", "plotting_backend.jl"))   # inline scripts run from a temp directory
+
