@@ -107,6 +107,15 @@
         @test latex(α) == "\\alpha"
         @test latex(K₁) == "K_{1}"
         @test latex(r_max) == "r_{\\mathrm{max}}"
+        @syms ηᵢ tᵢ δᵢ x₁ᵢ rₘₐₓ K12 βⱼ
+        @test latex(ηᵢ) == "\\eta_{i}"
+        @test latex(tᵢ) == "t_{i}"
+        @test latex(δᵢ) == "\\delta_{i}"
+        @test latex(x₁ᵢ) == "x_{1i}"
+        @test latex(rₘₐₓ) == "r_{\\mathrm{max}}"
+        @test latex(K12) == "K_{12}"
+        @test latex(βⱼ) == "\\beta_{j}"
+        @test occursin("\\eta_{i}", latex(exp(ηᵢ)))
         @test occursin("e^{", latex(exp(x)))
     end
 end

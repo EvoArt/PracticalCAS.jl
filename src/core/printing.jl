@@ -149,7 +149,10 @@ const _GREEKNAMES = Set(["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "
     "iota", "kappa", "lambda", "mu", "nu", "xi", "pi", "rho", "sigma", "tau", "upsilon",
     "phi", "chi", "psi", "omega", "Gamma", "Delta", "Theta", "Lambda", "Xi", "Pi", "Sigma",
     "Phi", "Psi", "Omega"])
-const _SUBDIGITS = Dict(zip("₀₁₂₃₄₅₆₇₈₉", "0123456789"))
+# Unicode subscript characters and the characters they stand for, so that a
+# trailing `₁`, `ᵢ` or `ₘₐₓ` prints as a LaTeX subscript like `_1` or `_max`.
+const _SUBCHARS = Dict(zip("₀₁₂₃₄₅₆₇₈₉ₐₑₒₓₕₖₗₘₙₚₛₜᵢⱼᵣᵤᵥᵦᵧᵨᵩᵪ₊₋",
+                           "0123456789aeoxhklmnpstijruvβγρφχ+-"))
 const _ACCENTS = Dict('̂' => "\\hat", '̄' => "\\bar", '̃' => "\\tilde", '̇' => "\\dot")
 
 function _latexbase(s::AbstractString)
@@ -183,9 +186,14 @@ function _latexname(name::Symbol)
     if m !== nothing
         s, sub = m.captures[1], m.captures[2]
     else
-        m2 = match(r"^(.*?[^0-9₀-₉])([0-9₀-₉]+)$", s)
-        if m2 !== nothing
-            s, sub = m2.captures[1], map(c -> get(_SUBDIGITS, c, c), m2.captures[2])
+        # A trailing run of ASCII digits or Unicode subscripts: `K1`, `K₁`, `ηᵢ`.
+        chars = collect(s)
+        j = length(chars)
+        while j >= 1 && (isdigit(chars[j]) || haskey(_SUBCHARS, chars[j]))
+            j -= 1
+        end
+        if 1 <= j < length(chars)
+            s, sub = String(chars[1:j]), String(map(c -> get(_SUBCHARS, c, c), chars[j+1:end]))
         end
     end
     b = _latexbase(s)
