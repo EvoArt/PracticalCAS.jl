@@ -1,5 +1,9 @@
 # PracticalCAS.jl
 
+[![Docs](https://img.shields.io/badge/docs-dev-blue.svg)](https://EvoArt.github.io/PracticalCAS.jl/dev/)
+[![CI](https://github.com/EvoArt/PracticalCAS.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/EvoArt/PracticalCAS.jl/actions/workflows/CI.yml?query=branch%3Amain)
+[![Coverage](https://codecov.io/gh/EvoArt/PracticalCAS.jl/branch/main/graph/badge.svg)](https://codecov.io/gh/EvoArt/PracticalCAS.jl)
+
 A computer algebra system in pure Julia, aimed first at mathematical modelling
 in ecology and evolution: everything needed for Otto & Day's *A Biologist's
 Guide to Mathematical Modeling in Ecology and Evolution*, plus evolutionary game
